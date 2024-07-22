@@ -1,0 +1,27 @@
+[
+        {
+            "ticker": "VWCE.MI",
+            "shares": 52
+        },
+        {
+            "ticker": "SWDA.MI",
+            "shares": 61
+        },
+        {
+            "ticker": "LCWD.MI",
+            "shares": 226
+        },
+        {
+            "ticker": "EIMI.MI",
+            "shares": 45
+        },
+        {
+            "ticker": "CSSPX.MI",
+            "shares": 1
+        },
+        {
+            "ticker": "XGSH.MI",
+            "shares": 1
+        }
+
+]
