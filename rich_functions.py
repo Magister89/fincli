@@ -42,4 +42,5 @@ def prettier_info(ticker: tk.Ticker, info: Optional[str], attribute: str):
             table.add_row(f'[bold blue]{key}[/bold blue]', str(value))
         printp(table)
     else:
-        printp(f"{attribute} for [bold green]{ticker.ticker}[/bold green] is [bold]{ticker.get_ticker_fast_info[attribute]}[/bold]")
+        attr = str(ticker.get_ticker_fast_info()[attribute])
+        printp(f"{attribute} for [bold green]{ticker.ticker}[/bold green] is [bold]{attr}[/bold]")

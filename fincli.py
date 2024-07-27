@@ -57,7 +57,8 @@ def main(ctx: typer.Context):
 def ticker(ctx: typer.Context,
            tkr: str, info: Annotated[Optional[str], typer.Argument(help="Prints Info")] = None,
            attribute: str = typer.Option("previousClose",
-                                         "--attribute", "-a", help="Attribute value")):
+                                         "--attribute", "-a",
+                                         help="Attribute value")):
     """
     Stocks/Funds info
     """
