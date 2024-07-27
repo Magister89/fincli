@@ -51,12 +51,6 @@ class Tickers:
         """
         return self.tickers_data.tickers[tkr].info
 
-    def get_ticker_basic_info(self, tkr: str):
-        """
-        Returns basic info object
-        """
-        return self.tickers_data.tickers[tkr].basic_info
-
 
 class Ticker:
     """
@@ -97,9 +91,3 @@ class Ticker:
         Returns info object
         """
         return self.ticker_data.info
-
-    def get_ticker_basic_info(self):
-        """
-        Returns basic info object
-        """
-        return self.ticker_data.basic_info
