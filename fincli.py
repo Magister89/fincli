@@ -14,8 +14,8 @@ import fincli_cache as fcache
 import portfolio as prt
 import ticker as tk
 
-PORTFOLIO_CACHE = "fincli_portfolio"
-TICKER_CACHE = "fincli_ticker"
+PORTFOLIO_CACHE = "/tmp/fincli_portfolio"
+TICKER_CACHE = "/tmp/fincli_ticker"
 PORTFOLIO_FILE_NAME = "portfolio.json"
 app = typer.Typer()
 
@@ -28,7 +28,7 @@ def create_portfolio_cache():
     return fcache.CachedLimiterSession(
         limiter=Limiter(RequestRate(1, Duration.SECOND*3)),
         bucket_class=MemoryQueueBucket,
-        backend=cache, expire_after=300)
+        backend=cache, expire_after=419)
 
 
 def create_ticker_cache():
@@ -84,13 +84,15 @@ def portfolio(ctx: typer.Context, total: Annotated[bool,
                                                                 help="Prints total value and yield",
                                                                 is_flag=True)] = False,
               file: Annotated[str, typer.Option("--file", "-f",
-                                                          help="File Path")] = PORTFOLIO_FILE_NAME):
+                                                          help="File Path")] = PORTFOLIO_FILE_NAME,
+              cache: Annotated[bool, typer.Option("--cache", help="Cache renewal", is_flag=True)] = False):
     """
     Portfolio Status
     """
     session = ctx.obj["portfolio"]
     prt_loaded = prt.Portfolio(file, session)
-    rf.prettier_portfolio(prt_loaded, total)
+    if not cache:
+        rf.prettier_portfolio(prt_loaded, total)
 
 
 if __name__ == "__main__":

@@ -3,9 +3,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Cache
-fincli_portfolio/
-fincli_ticker/
+# Utility
+wrapper.sh
 
 # C extensions
 *.so

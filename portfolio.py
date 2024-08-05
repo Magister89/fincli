@@ -62,21 +62,21 @@ class Portfolio:
                                     self.tickers.get_ticker_fast_info(ticker['ticker'])['lastPrice'], 2)
             ticker['previousClose'] = round(ticker['shares'] *
                                             self.tickers.get_ticker_fast_info(ticker['ticker'])['previousClose'], 2)
-            ticker['yield'] = round(
+            ticker['p&l'] = round(
                 ((ticker['price']/ticker['previousClose']) - 1) * 100, 2)
 
     def total_value(self):
         """
-        Returns total portfolio value and yield
+        Returns total portfolio value and profit/loss
         """
         total_value = 0.00
         total_previous = 0.00
         for ticker in self.portfolio:
             total_value += ticker['price']
             total_previous += ticker['previousClose']
-        total_yield = round((total_value/total_previous - 1) * 100, 2)
+        total_pl = round((total_value/total_previous - 1) * 100, 2)
         return [{"ticker": "Portfolio", "shares": 0, "price": round(total_value, 2),
-                 "previousClose": round(total_previous, 2), "yield": total_yield}]
+                 "previousClose": round(total_previous, 2), "p&l": total_pl}]
 
     def get_portfolio(self):
         """
