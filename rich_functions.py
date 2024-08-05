@@ -6,6 +6,7 @@ from rich import print as printp
 from rich.table import Table
 import portfolio as prt
 import ticker as tk
+DEFAULT_ATTRIBUTE = "previousClose"
 
 def prettier_portfolio(portfolio: prt.Portfolio, total: bool):
     """
@@ -30,7 +31,7 @@ def prettier_portfolio(portfolio: prt.Portfolio, total: bool):
         table.add_row(ticker_t, price_t, conditional_yield_t)
     printp(table)
 
-def prettier_info(ticker: tk.Ticker, info: Optional[str], attribute: str):
+def prettier_info(ticker: tk.Ticker, info: Optional[str], attribute: Optional[str]):
     """
     Prints table ticker info
     """
@@ -42,5 +43,6 @@ def prettier_info(ticker: tk.Ticker, info: Optional[str], attribute: str):
             table.add_row(f'[bold blue]{key}[/bold blue]', str(value))
         printp(table)
     else:
-        attr = str(ticker.get_ticker_fast_info()[attribute])
+        attr_str = DEFAULT_ATTRIBUTE if attribute is not None else attribute
+        attr = str(ticker.get_ticker_fast_info()[attr_str])
         printp(f"{attribute} for [bold green]{ticker.ticker}[/bold green] is [bold]{attr}[/bold]")

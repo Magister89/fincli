@@ -14,8 +14,9 @@ import fincli_cache as fcache
 import portfolio as prt
 import ticker as tk
 
-PORTFOLIO_CACHE = 'fincli_portfolio'
-TICKER_CACHE = 'fincli_ticker'
+PORTFOLIO_CACHE = "fincli_portfolio"
+TICKER_CACHE = "fincli_ticker"
+PORTFOLIO_FILE_NAME = "portfolio.json"
 app = typer.Typer()
 
 
@@ -41,40 +42,53 @@ def create_ticker_cache():
         backend=cache, expire_after=300)
 
 
+def validate_option(ctx: typer.Context, arg: str, opt: str):
+    """
+    Generic option validation with specified argument
+    """
+    if ctx.params.get(arg) is not None and ctx.params.get(opt) is not None:
+        raise typer.BadParameter(
+            f"--{opt} option in not valid with argument {arg}")
+
+
 @app.callback()
 def main(ctx: typer.Context):
     """
     Cache callback
     """
     ctx.obj = {}
-    if ctx.invoked_subcommand == 'ticker':
-        ctx.obj['ticker'] = create_ticker_cache()
-    if ctx.invoked_subcommand == 'portfolio':
-        ctx.obj['portfolio'] = create_portfolio_cache()
+    if ctx.invoked_subcommand == "ticker":
+        ctx.obj["ticker"] = create_ticker_cache()
+    if ctx.invoked_subcommand == "portfolio":
+        ctx.obj["portfolio"] = create_portfolio_cache()
 
 
 @app.command()
-def ticker(ctx: typer.Context,
-           tkr: str, info: Annotated[Optional[str], typer.Argument(help="Prints Info")] = None,
-           attribute: str = typer.Option("previousClose",
-                                         "--attribute", "-a",
-                                         help="Attribute value")):
+def ticker(ctx: typer.Context, tkr: str,
+           info: Annotated[Optional[str], typer.Argument(
+               help="Prints Info")] = None,
+           attribute: Annotated[Optional[str], typer.Option("--attribute", "-a",
+                                                            help="Attribute value")] = None):
     """
     Stocks/Funds info
     """
-    tkr_loaded = tk.Ticker(tkr, ctx.obj['ticker'])
+    session = ctx.obj["ticker"]
+    validate_option(ctx, "info", "attribute")
+    tkr_loaded = tk.Ticker(tkr, session)
     rf.prettier_info(tkr_loaded, info, attribute)
 
 
 @app.command()
-def portfolio(ctx: typer.Context, total: bool = typer.Option(False, "--total", "-t",
-                                                             help="Prints total value and yield",
-                                                             is_flag=True),
-              file: str = typer.Option("portfolio.json", "--file", "-f", help="File Path")):
+def portfolio(ctx: typer.Context, total: Annotated[bool,
+                                                   typer.Option("--total", "-t",
+                                                                help="Prints total value and yield",
+                                                                is_flag=True)] = False,
+              file: Annotated[str, typer.Option("--file", "-f",
+                                                          help="File Path")] = PORTFOLIO_FILE_NAME):
     """
     Portfolio Status
     """
-    session = ctx.obj['portfolio']
+    session = ctx.obj["portfolio"]
     prt_loaded = prt.Portfolio(file, session)
     rf.prettier_portfolio(prt_loaded, total)
 

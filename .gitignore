@@ -4,7 +4,8 @@ __pycache__/
 *$py.class
 
 # Cache
-*.cache
+fincli_portfolio/
+fincli_ticker/
 
 # C extensions
 *.so
