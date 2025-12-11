@@ -7,7 +7,7 @@ A command-line interface tool for managing and tracking investment portfolios an
 - **Ticker Information**: Retrieve detailed information about stocks, ETFs, and other financial instruments
 - **Portfolio Tracking**: Monitor your investment portfolio with real-time pricing
 - **Performance Metrics**: Track profit/loss (P&L) based on daily price changes
-- **Smart Caching**: Built-in caching and rate limiting to optimize API requests
+- **Real-time Data**: Direct Yahoo Finance API calls for up-to-date pricing
 - **Rich Output**: Beautiful terminal output with formatted tables
 
 ## Requirements
@@ -17,9 +17,6 @@ A command-line interface tool for managing and tracking investment portfolios an
   - `typer` - CLI framework
   - `yfinance` - Yahoo Finance API wrapper
   - `rich` - Terminal formatting
-  - `requests-cache` - HTTP response caching
-  - `requests-ratelimiter` - Rate limiting
-  - `pyrate-limiter` - Rate limiting utilities
 
 ## Installation
 
@@ -31,7 +28,7 @@ cd fincli
 
 2. Install dependencies:
 ```bash
-pip install typer yfinance rich requests-cache requests-ratelimiter pyrate-limiter typing-extensions
+pip install typer yfinance rich typing-extensions
 ```
 
 3. Make the script executable (optional):
@@ -76,8 +73,6 @@ python fincli.py portfolio --total
 # Use a custom portfolio file
 python fincli.py portfolio --file /path/to/my_portfolio.json
 
-# Renew cache
-python fincli.py portfolio --cache
 ```
 
 **Options:**
@@ -85,7 +80,6 @@ python fincli.py portfolio --cache
 |--------|-------|-------------|
 | `--total` | `-t` | Display only portfolio totals (aggregate value and P&L) |
 | `--file` | `-f` | Path to portfolio JSON file (default: `portfolio.json`) |
-| `--cache` | | Trigger cache renewal |
 
 ## Portfolio File Format
 
@@ -115,16 +109,6 @@ Create a `portfolio.json` file in the project directory with your holdings:
   - `shares`: Number of shares owned (integer)
 - Use the appropriate exchange suffix for non-US stocks (e.g., `.MI` for Milan Stock Exchange)
 
-## Caching
-
-FinCLI implements intelligent caching to reduce API calls and improve performance:
-
-- **Portfolio cache**: Located at `/tmp/fincli_portfolio`, expires after ~7 minutes
-- **Ticker cache**: Located at `/tmp/fincli_ticker`, expires after 5 minutes
-- **Rate limiting**: Maximum 1 request per 3 seconds to respect API limits
-
-Use `--cache` flag with the portfolio command to force cache renewal.
-
 ## Project Structure
 
 ```
@@ -133,7 +117,6 @@ fincli/
 ├── ticker.py              # Ticker data model classes
 ├── portfolio.py           # Portfolio model with validation and aggregation
 ├── rich_functions.py      # Display formatting functions
-├── fincli_cache.py        # Caching session configuration
 ├── portfolio.json         # Your portfolio holdings
 ├── LICENSE                # MIT License
 └── README.md              # This file
