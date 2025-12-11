@@ -4,7 +4,6 @@ Portfolio Class and functions
 import json as js
 from rich import print as printp
 import ticker as tk
-import fincli_cache as fcache
 
 
 class Portfolio:
@@ -12,10 +11,10 @@ class Portfolio:
     Portfolio Class
     """
 
-    def __init__(self, file_path: str, session: fcache.CachedLimiterSession):
+    def __init__(self, file_path: str):
         self.portfolio = self.load_portfolio(file_path)
         self.tickers = None
-        self.update_status(session)
+        self.update_status()
         self.total_portfolio_value = self.total_value()
 
     def load_portfolio(self, file_path: str):
@@ -51,12 +50,12 @@ class Portfolio:
                 raise ValueError(
                     "Attributes 'ticker' and 'shares' should string and int respectively")
 
-    def update_status(self, session: fcache.CachedLimiterSession):
+    def update_status(self):
         """
         Updates portfolio with price and previous close
         """
         tickers = ' '.join(self.get_tickers())
-        self.tickers = tk.Tickers(tickers, session=session)
+        self.tickers = tk.Tickers(tickers)
         for ticker in self.portfolio:
             ticker['price'] = round(ticker['shares'] *
                                     self.tickers.get_ticker_fast_info(ticker['ticker'])['lastPrice'], 2)
@@ -84,12 +83,12 @@ class Portfolio:
         """
         return self.portfolio
 
-    def set_portfolio(self, file_path: str, session: fcache.CachedLimiterSession):
+    def set_portfolio(self, file_path: str):
         """
         Reloads portfolio
         """
         self.portfolio = self.load_portfolio(file_path)
-        self.update_status(session)
+        self.update_status()
         self.total_portfolio_value = self.total_value()
 
     def get_tickers(self):

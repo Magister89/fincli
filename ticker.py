@@ -2,7 +2,6 @@
 Ticker Classes and Functions
 """
 import yfinance as yf
-import fincli_cache as fcache
 
 
 class Tickers:
@@ -10,9 +9,9 @@ class Tickers:
     Tickers Class
     """
 
-    def __init__(self, tickers: str, session: fcache.CachedLimiterSession):
+    def __init__(self, tickers: str):
         self.tickers = tickers
-        self.tickers_data = yf.Tickers(tickers, session=session)
+        self.tickers_data = yf.Tickers(tickers)
 
     def get_tickers(self):
         """
@@ -20,12 +19,12 @@ class Tickers:
         """
         return self.tickers
 
-    def set_tickers(self, tickers: str, session: fcache.CachedLimiterSession):
+    def set_tickers(self, tickers: str):
         """
         Resets tickers
         """
         self.tickers = tickers
-        self.tickers_data = yf.Tickers(tickers, session=session)
+        self.tickers_data = yf.Tickers(tickers)
 
     def get_tickers_list(self):
         """
@@ -57,9 +56,9 @@ class Ticker:
     Ticker Class
     """
 
-    def __init__(self, ticker: str, session: fcache.CachedLimiterSession):
+    def __init__(self, ticker: str):
         self.ticker = ticker
-        self.ticker_data = yf.Ticker(ticker, session=session)
+        self.ticker_data = yf.Ticker(ticker)
 
     def get_ticker(self):
         """
@@ -67,12 +66,12 @@ class Ticker:
         """
         return self.ticker
 
-    def set_ticker(self, ticker: str, session: fcache.CachedLimiterSession):
+    def set_ticker(self, ticker: str):
         """
         Resets ticker
         """
         self.ticker = ticker
-        self.ticker_data = yf.Ticker(ticker, session=session)
+        self.ticker_data = yf.Ticker(ticker)
 
     def get_ticker_data(self):
         """

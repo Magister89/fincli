@@ -1,27 +1,26 @@
 [
-        {
-            "ticker": "VWCE.MI",
-            "shares": 68
-        },
-        {
-            "ticker": "SWDA.MI",
-            "shares": 64
-        },
-        {
-            "ticker": "LCWD.MI",
-            "shares": 226
-        },
-        {
-            "ticker": "EIMI.MI",
-            "shares": 46
-        },
-        {
-            "ticker": "CSSPX.MI",
-            "shares": 1
-        },
-        {
-            "ticker": "XGSH.MI",
-            "shares": 1
-        }
-
+    {
+        "ticker": "VWCE.MI",
+        "shares": 205
+    },
+    {
+        "ticker": "SWDA.MI",
+        "shares": 140
+    },
+    {
+        "ticker": "MWRD.MI",
+        "shares": 116
+    },
+    {
+        "ticker": "EIMI.MI",
+        "shares": 123
+    },
+    {
+        "ticker": "MEUD.MI",
+        "shares": 24
+    },
+    {
+        "ticker": "1GOOG.MI",
+        "shares": 6
+    }
 ]
