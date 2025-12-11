@@ -4,6 +4,7 @@ Rich functions for prettier outputs
 from typing import Optional
 from rich import print as printp
 from rich.table import Table
+from rich.text import Text
 import portfolio as prt
 import ticker as tk
 DEFAULT_ATTRIBUTE = "previousClose"
@@ -14,9 +15,9 @@ def prettier_portfolio(portfolio: prt.Portfolio, total: bool):
     """
     table = Table(show_header=True,
                   header_style="bold magenta", title_justify="center")
-    table.add_column("Total" if total else "Ticker", justify="center")
-    table.add_column("Value", justify="center")
-    table.add_column("P&L", justify="center")
+    table.add_column(Text("Total" if total else "Ticker", justify="center"), justify="left")
+    table.add_column(Text("Value", justify="center"), justify="left")
+    table.add_column(Text("P&L", justify="center"), justify="left")
     prtf = portfolio.get_portfolio()
     if total:
         prtf = portfolio.get_total_portfolio_value()
@@ -25,7 +26,7 @@ def prettier_portfolio(portfolio: prt.Portfolio, total: bool):
         price = element['price']
         profit_loss = element['p&l']
         ticker_t = f'[bold blue]{ticker}[/bold blue]'
-        price_t = f'[bold white]{price}[/bold white]'
+        price_t = f'[bold white]{price:,.2f}[/bold white]'
         conditional_profit_loss_t = f'[bold green]▲ {profit_loss}%[/bold green]' \
             if profit_loss >= 0 else f'[bold red]▼ {profit_loss}%[/bold red]'
         table.add_row(ticker_t, price_t, conditional_profit_loss_t)

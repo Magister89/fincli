@@ -22,5 +22,13 @@
     {
         "ticker": "1GOOG.MI",
         "shares": 6
+    },
+    {
+        "ticker": "EM35.MI",
+        "shares": 300
+    },
+    {
+        "ticker": "EM710.MI",
+        "shares": 59
     }
 ]

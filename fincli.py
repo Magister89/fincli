@@ -50,14 +50,12 @@ def portfolio(ctx: typer.Context, total: Annotated[bool,
                                                                 help="Prints total value and yield",
                                                                 is_flag=True)] = False,
               file: Annotated[str, typer.Option("--file", "-f",
-                                                          help="File Path")] = PORTFOLIO_FILE_NAME,
-              cache: Annotated[bool, typer.Option("--cache", help="Cache renewal", is_flag=True)] = False):
+                                                          help="File Path")] = PORTFOLIO_FILE_NAME):
     """
     Portfolio Status
     """
     prt_loaded = prt.Portfolio(file)
-    if not cache:
-        rf.prettier_portfolio(prt_loaded, total)
+    rf.prettier_portfolio(prt_loaded, total)
 
 
 if __name__ == "__main__":

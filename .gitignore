@@ -5,6 +5,7 @@ __pycache__/
 
 # Utility
 wrapper.sh
+test_rich.py
 
 # C extensions
 *.so
