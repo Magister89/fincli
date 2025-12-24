@@ -1,0 +1,34 @@
+[
+    {
+        "ticker": "VWCE.MI",
+        "shares": 207
+    },
+    {
+        "ticker": "SWDA.MI",
+        "shares": 140
+    },
+    {
+        "ticker": "MWRD.MI",
+        "shares": 118
+    },
+    {
+        "ticker": "EIMI.MI",
+        "shares": 123
+    },
+    {
+        "ticker": "MEUD.MI",
+        "shares": 24
+    },
+    {
+        "ticker": "1GOOG.MI",
+        "shares": 6
+    },
+    {
+        "ticker": "EM35.MI",
+        "shares": 300
+    },
+    {
+        "ticker": "EM710.MI",
+        "shares": 59
+    }
+]
