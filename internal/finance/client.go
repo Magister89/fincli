@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"sync"
 	"time"
+
+	"github.com/giorgio/fincli/internal/cache"
 )
 
 const (
@@ -18,19 +20,43 @@ const (
 // Client is the Yahoo Finance HTTP client
 type Client struct {
 	httpClient *http.Client
+	cache      *cache.Cache
 }
 
 // NewClient creates a new Yahoo Finance client
 func NewClient() *Client {
+	// Initialize cache (ignore errors, cache is optional)
+	c, _ := cache.New()
+
 	return &Client{
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
+		cache: c,
 	}
 }
 
 // GetQuote fetches quote data for a single ticker
 func (c *Client) GetQuote(symbol string) (*QuoteData, error) {
+	// Check cache first
+	if c.cache != nil {
+		if cached, ok := c.cache.Get(symbol); ok {
+			return &QuoteData{
+				Symbol:           cached.Symbol,
+				LastPrice:        cached.LastPrice,
+				PreviousClose:    cached.PreviousClose,
+				Currency:         cached.Currency,
+				Open:             cached.Open,
+				DayHigh:          cached.DayHigh,
+				DayLow:           cached.DayLow,
+				Volume:           cached.Volume,
+				MarketCap:        cached.MarketCap,
+				FiftyTwoWeekHigh: cached.FiftyTwoWeekHigh,
+				FiftyTwoWeekLow:  cached.FiftyTwoWeekLow,
+			}, nil
+		}
+	}
+
 	url := fmt.Sprintf("%s/%s", chartBaseURL, url.PathEscape(symbol))
 
 	req, err := http.NewRequest("GET", url, nil)
@@ -68,7 +94,7 @@ func (c *Client) GetQuote(symbol string) (*QuoteData, error) {
 	}
 
 	meta := chartResp.Chart.Result[0].Meta
-	return &QuoteData{
+	quote := &QuoteData{
 		Symbol:           meta.Symbol,
 		LastPrice:        meta.RegularMarketPrice,
 		PreviousClose:    meta.PreviousClose,
@@ -79,7 +105,26 @@ func (c *Client) GetQuote(symbol string) (*QuoteData, error) {
 		Volume:           meta.RegularMarketVolume,
 		FiftyTwoWeekHigh: meta.FiftyTwoWeekHigh,
 		FiftyTwoWeekLow:  meta.FiftyTwoWeekLow,
-	}, nil
+	}
+
+	// Cache the result
+	if c.cache != nil {
+		c.cache.Set(symbol, cache.QuoteCache{
+			Symbol:           quote.Symbol,
+			LastPrice:        quote.LastPrice,
+			PreviousClose:    quote.PreviousClose,
+			Currency:         quote.Currency,
+			Open:             quote.Open,
+			DayHigh:          quote.DayHigh,
+			DayLow:           quote.DayLow,
+			Volume:           quote.Volume,
+			MarketCap:        quote.MarketCap,
+			FiftyTwoWeekHigh: quote.FiftyTwoWeekHigh,
+			FiftyTwoWeekLow:  quote.FiftyTwoWeekLow,
+		})
+	}
+
+	return quote, nil
 }
 
 // GetQuotes fetches quote data for multiple tickers using concurrent requests

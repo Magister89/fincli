@@ -143,6 +143,7 @@ GOOS=linux GOARCH=amd64 go build -o fincli ./cmd/fincli
 - [x] Portfolio tracking with P&L
 - [x] Concurrent ticker fetching
 - [x] Colored terminal output
+- [x] **Response Caching** — File-based cache at `~/.fincli/cache.json` with 2-minute TTL
 
 ### 🔄 In Progress
 
@@ -150,7 +151,7 @@ GOOS=linux GOARCH=amd64 go build -o fincli ./cmd/fincli
 
 ### 📋 Planned
 
-- [ ] **Response Caching** — TTL-based cache for API responses to reduce latency, avoid rate limiting, and enable offline viewing of recent data
+<!-- TODO -->
 
 ---
 
