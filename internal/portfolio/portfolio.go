@@ -106,3 +106,15 @@ func (p *Portfolio) GetTickers() []string {
 	}
 	return tickers
 }
+
+// GetTotalPnL returns the total portfolio P&L percentage
+func (p *Portfolio) GetTotalPnL() float64 {
+	var totalPrevClose float64
+	for _, item := range p.items {
+		totalPrevClose += item.PreviousClose
+	}
+	if totalPrevClose == 0 {
+		return 0
+	}
+	return ((p.totalValue / totalPrevClose) - 1) * 100
+}

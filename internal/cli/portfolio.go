@@ -22,7 +22,7 @@ var portfolioCmd = &cobra.Command{
 		}
 
 		if showTotalOnly {
-			display.PrintTotalOnly(p.GetTotalValue())
+			display.PrintTotalOnly(p.GetTotalValue(), p.GetTotalPnL())
 			return nil
 		}
 
@@ -38,7 +38,7 @@ var portfolioCmd = &cobra.Command{
 			}
 		}
 
-		display.PrintPortfolioTable(rows, true, p.GetTotalValue())
+		display.PrintPortfolioTable(rows, true, p.GetTotalValue(), p.GetTotalPnL())
 		return nil
 	},
 }
