@@ -28,9 +28,15 @@ func NewClient() *Client {
 	// Initialize cache (ignore errors, cache is optional)
 	c, _ := cache.New()
 
+	// Use a custom transport that respects HTTP_PROXY/HTTPS_PROXY env vars
+	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+	}
+
 	return &Client{
 		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout:   10 * time.Second,
+			Transport: transport,
 		},
 		cache: c,
 	}
