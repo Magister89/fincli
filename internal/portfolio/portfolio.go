@@ -118,3 +118,74 @@ func (p *Portfolio) GetTotalPnL() float64 {
 	}
 	return ((p.totalValue / totalPrevClose) - 1) * 100
 }
+
+// CurrencyGroup holds items and totals for a single currency
+type CurrencyGroup struct {
+	Currency   string
+	Items      []EnrichedItem
+	TotalValue float64
+	TotalPnL   float64
+}
+
+// GetCurrencyGroups returns items grouped by currency with subtotals
+func (p *Portfolio) GetCurrencyGroups() []CurrencyGroup {
+	// Group items by currency
+	groups := make(map[string]*CurrencyGroup)
+	order := []string{} // preserve order of first occurrence
+
+	for _, item := range p.items {
+		if _, exists := groups[item.Currency]; !exists {
+			groups[item.Currency] = &CurrencyGroup{
+				Currency: item.Currency,
+				Items:    []EnrichedItem{},
+			}
+			order = append(order, item.Currency)
+		}
+		groups[item.Currency].Items = append(groups[item.Currency].Items, item)
+		groups[item.Currency].TotalValue += item.Price
+	}
+
+	// Calculate P&L for each group
+	for _, group := range groups {
+		var totalPrevClose float64
+		for _, item := range group.Items {
+			totalPrevClose += item.PreviousClose
+		}
+		if totalPrevClose > 0 {
+			group.TotalPnL = ((group.TotalValue / totalPrevClose) - 1) * 100
+		}
+	}
+
+	// Return in order of first occurrence
+	result := make([]CurrencyGroup, len(order))
+	for i, currency := range order {
+		result[i] = *groups[currency]
+	}
+
+	return result
+}
+
+// IsSingleCurrency returns true if all items have the same currency
+func (p *Portfolio) IsSingleCurrency() bool {
+	if len(p.items) == 0 {
+		return true
+	}
+	currency := p.items[0].Currency
+	for _, item := range p.items {
+		if item.Currency != currency {
+			return false
+		}
+	}
+	return true
+}
+
+// GetCurrency returns the currency if single currency portfolio, empty string otherwise
+func (p *Portfolio) GetCurrency() string {
+	if len(p.items) == 0 {
+		return ""
+	}
+	if p.IsSingleCurrency() {
+		return p.items[0].Currency
+	}
+	return ""
+}

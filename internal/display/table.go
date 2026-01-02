@@ -2,9 +2,76 @@ package display
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 )
+
+// FormatWithThousands formats a float64 with thousands separator (comma)
+func FormatWithThousands(value float64, decimals int) string {
+	// Format the number with specified decimals
+	format := fmt.Sprintf("%%.%df", decimals)
+	str := fmt.Sprintf(format, value)
+
+	// Split integer and decimal parts
+	parts := strings.Split(str, ".")
+	intPart := parts[0]
+
+	// Handle negative numbers
+	negative := false
+	if len(intPart) > 0 && intPart[0] == '-' {
+		negative = true
+		intPart = intPart[1:]
+	}
+
+	// Add thousands separators
+	var result strings.Builder
+	for i, c := range intPart {
+		if i > 0 && (len(intPart)-i)%3 == 0 {
+			result.WriteRune(',')
+		}
+		result.WriteRune(c)
+	}
+
+	// Rebuild the number
+	formatted := result.String()
+	if negative {
+		formatted = "-" + formatted
+	}
+	if len(parts) > 1 {
+		formatted = formatted + "." + parts[1]
+	}
+
+	return formatted
+}
+
+// FormatIntWithThousands formats an int64 with thousands separator (comma)
+func FormatIntWithThousands(value int64) string {
+	str := fmt.Sprintf("%d", value)
+
+	// Handle negative numbers
+	negative := false
+	if len(str) > 0 && str[0] == '-' {
+		negative = true
+		str = str[1:]
+	}
+
+	// Add thousands separators
+	var result strings.Builder
+	for i, c := range str {
+		if i > 0 && (len(str)-i)%3 == 0 {
+			result.WriteRune(',')
+		}
+		result.WriteRune(c)
+	}
+
+	formatted := result.String()
+	if negative {
+		formatted = "-" + formatted
+	}
+
+	return formatted
+}
 
 // Column widths
 const (
@@ -30,56 +97,105 @@ type PortfolioRow struct {
 	Currency string
 }
 
-// PrintPortfolioTable prints a formatted portfolio table
-func PrintPortfolioTable(rows []PortfolioRow, showTotal bool, totalValue float64, totalPnL float64) {
-	// Print header with proper alignment
+// CurrencyGroup represents a group of portfolio items with the same currency
+type CurrencyGroup struct {
+	Currency   string
+	Rows       []PortfolioRow
+	TotalValue float64
+	TotalPnL   float64
+}
+
+// PrintPortfolioTable prints a formatted portfolio table (single currency)
+func PrintPortfolioTable(rows []PortfolioRow, showTotal bool, totalValue float64, totalPnL float64, currency string) {
+	printHeader()
+	separator := getSeparator()
+	fmt.Println(dimStyle.Render(separator))
+
+	// Print rows
+	for _, row := range rows {
+		printRow(row)
+	}
+
+	if showTotal {
+		fmt.Println(dimStyle.Render(separator))
+		printTotal("Total", totalValue, totalPnL, currency)
+	}
+}
+
+// PrintMultiCurrencyPortfolio prints a portfolio grouped by currency with subtotals
+func PrintMultiCurrencyPortfolio(groups []CurrencyGroup) {
+	printHeader()
+	separator := getSeparator()
+	fmt.Println(dimStyle.Render(separator))
+
+	for i, group := range groups {
+		// Print rows for this currency group
+		for _, row := range group.Rows {
+			printRow(row)
+		}
+
+		// Print subtotal for this currency
+		fmt.Println(dimStyle.Render(separator))
+		printTotal("Subtotal", group.TotalValue, group.TotalPnL, group.Currency)
+
+		// Add spacing between currency groups (except after last)
+		if i < len(groups)-1 {
+			fmt.Println()
+			printHeader()
+			fmt.Println(dimStyle.Render(separator))
+		}
+	}
+}
+
+// printHeader prints the table header
+func printHeader() {
 	header := fmt.Sprintf("%-*s  %-*s  %-*s",
 		colTicker, "Ticker",
 		colValue, "Value",
 		colPnL, "P&L",
 	)
 	fmt.Println(headerStyle.Render(header))
+}
 
-	// Separator line
-	separator := fmt.Sprintf("%-*s  %-*s  %-*s",
+// getSeparator returns the separator line
+func getSeparator() string {
+	return fmt.Sprintf("%-*s  %-*s  %-*s",
 		colTicker, "────────────",
 		colValue, "──────────────────",
 		colPnL, "────────────",
 	)
-	fmt.Println(dimStyle.Render(separator))
-
-	// Print rows
-	for _, row := range rows {
-		tickerStr := fmt.Sprintf("%-*s", colTicker, row.Ticker)
-		valueStr := fmt.Sprintf("%*.2f %s", colValue-4, row.Value, row.Currency)
-		pnlStr := formatPnL(row.PnL)
-
-		fmt.Printf("%s  %s  %s\n",
-			blueStyle.Render(tickerStr),
-			valueStr,
-			pnlStr,
-		)
-	}
-
-	if showTotal {
-		// Total separator
-		fmt.Println(dimStyle.Render(separator))
-
-		// Total row aligned with columns
-		totalLabel := fmt.Sprintf("%-*s", colTicker, "Total")
-		totalValueStr := fmt.Sprintf("%*.2f EUR", colValue-4, totalValue)
-		totalPnLStr := formatPnL(totalPnL)
-
-		fmt.Printf("%s  %s  %s\n",
-			boldStyle.Render(totalLabel),
-			boldStyle.Render(totalValueStr),
-			totalPnLStr,
-		)
-	}
 }
 
-// PrintTotalOnly prints only the total value with P&L
-func PrintTotalOnly(totalValue float64, totalPnL float64) {
+// printRow prints a single portfolio row
+func printRow(row PortfolioRow) {
+	tickerStr := fmt.Sprintf("%-*s", colTicker, row.Ticker)
+	formattedValue := FormatWithThousands(row.Value, 2)
+	valueStr := fmt.Sprintf("%*s %s", colValue-4, formattedValue, row.Currency)
+	pnlStr := formatPnL(row.PnL)
+
+	fmt.Printf("%s  %s  %s\n",
+		blueStyle.Render(tickerStr),
+		valueStr,
+		pnlStr,
+	)
+}
+
+// printTotal prints a total/subtotal row
+func printTotal(label string, value float64, pnl float64, currency string) {
+	totalLabel := fmt.Sprintf("%-*s", colTicker, label)
+	formattedTotal := FormatWithThousands(value, 2)
+	totalValueStr := fmt.Sprintf("%*s %s", colValue-4, formattedTotal, currency)
+	totalPnLStr := formatPnL(pnl)
+
+	fmt.Printf("%s  %s  %s\n",
+		boldStyle.Render(totalLabel),
+		boldStyle.Render(totalValueStr),
+		totalPnLStr,
+	)
+}
+
+// PrintTotalOnly prints only the total value with P&L (single currency)
+func PrintTotalOnly(totalValue float64, totalPnL float64, currency string) {
 	// Header
 	header := fmt.Sprintf("%-*s  %-*s", 16, "Total Value", 12, "P&L")
 	fmt.Println(headerStyle.Render(header))
@@ -89,9 +205,28 @@ func PrintTotalOnly(totalValue float64, totalPnL float64) {
 	fmt.Println(dimStyle.Render(separator))
 
 	// Value row
-	valueStr := fmt.Sprintf("%*.2f EUR", 12, totalValue)
+	formattedValue := FormatWithThousands(totalValue, 2)
+	valueStr := fmt.Sprintf("%*s %s", 12, formattedValue, currency)
 	pnlStr := formatPnL(totalPnL)
 	fmt.Printf("%s  %s\n", boldStyle.Render(valueStr), pnlStr)
+}
+
+// PrintMultiCurrencyTotalOnly prints totals per currency when using --total with multi-currency
+func PrintMultiCurrencyTotalOnly(groups []CurrencyGroup) {
+	// Header
+	header := fmt.Sprintf("%-*s  %-*s", 16, "Total Value", 12, "P&L")
+	fmt.Println(headerStyle.Render(header))
+
+	// Separator
+	separator := fmt.Sprintf("%-*s  %-*s", 16, "────────────────", 12, "────────────")
+	fmt.Println(dimStyle.Render(separator))
+
+	for _, group := range groups {
+		formattedValue := FormatWithThousands(group.TotalValue, 2)
+		valueStr := fmt.Sprintf("%*s %s", 12, formattedValue, group.Currency)
+		pnlStr := formatPnL(group.TotalPnL)
+		fmt.Printf("%s  %s\n", boldStyle.Render(valueStr), pnlStr)
+	}
 }
 
 // TickerInfoRow represents a row in the ticker info table

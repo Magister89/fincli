@@ -21,24 +21,59 @@ var portfolioCmd = &cobra.Command{
 			return err
 		}
 
-		if showTotalOnly {
-			display.PrintTotalOnly(p.GetTotalValue(), p.GetTotalPnL())
+		// Check if single or multi-currency portfolio
+		if p.IsSingleCurrency() {
+			currency := p.GetCurrency()
+
+			if showTotalOnly {
+				display.PrintTotalOnly(p.GetTotalValue(), p.GetTotalPnL(), currency)
+				return nil
+			}
+
+			// Build display rows
+			items := p.GetItems()
+			rows := make([]display.PortfolioRow, len(items))
+			for i, item := range items {
+				rows[i] = display.PortfolioRow{
+					Ticker:   item.Ticker,
+					Value:    item.Price,
+					PnL:      item.PnL,
+					Currency: item.Currency,
+				}
+			}
+
+			display.PrintPortfolioTable(rows, true, p.GetTotalValue(), p.GetTotalPnL(), currency)
 			return nil
 		}
 
-		// Build display rows
-		items := p.GetItems()
-		rows := make([]display.PortfolioRow, len(items))
-		for i, item := range items {
-			rows[i] = display.PortfolioRow{
-				Ticker:   item.Ticker,
-				Value:    item.Price,
-				PnL:      item.PnL,
-				Currency: item.Currency,
+		// Multi-currency portfolio
+		currencyGroups := p.GetCurrencyGroups()
+		displayGroups := make([]display.CurrencyGroup, len(currencyGroups))
+
+		for i, group := range currencyGroups {
+			rows := make([]display.PortfolioRow, len(group.Items))
+			for j, item := range group.Items {
+				rows[j] = display.PortfolioRow{
+					Ticker:   item.Ticker,
+					Value:    item.Price,
+					PnL:      item.PnL,
+					Currency: item.Currency,
+				}
+			}
+			displayGroups[i] = display.CurrencyGroup{
+				Currency:   group.Currency,
+				Rows:       rows,
+				TotalValue: group.TotalValue,
+				TotalPnL:   group.TotalPnL,
 			}
 		}
 
-		display.PrintPortfolioTable(rows, true, p.GetTotalValue(), p.GetTotalPnL())
+		if showTotalOnly {
+			display.PrintMultiCurrencyTotalOnly(displayGroups)
+			return nil
+		}
+
+		display.PrintMultiCurrencyPortfolio(displayGroups)
 		return nil
 	},
 }

@@ -97,9 +97,9 @@ func printAttribute(symbol string, ticker *finance.Ticker, attr string) error {
 func formatValue(v interface{}) string {
 	switch val := v.(type) {
 	case float64:
-		return fmt.Sprintf("%.2f", val)
+		return display.FormatWithThousands(val, 2)
 	case int64:
-		return fmt.Sprintf("%d", val)
+		return display.FormatIntWithThousands(val)
 	case string:
 		return val
 	default:
