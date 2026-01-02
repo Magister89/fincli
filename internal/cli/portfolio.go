@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
+
 	"github.com/giorgio/fincli/internal/display"
 	"github.com/giorgio/fincli/internal/portfolio"
 	"github.com/spf13/cobra"
@@ -79,6 +82,11 @@ var portfolioCmd = &cobra.Command{
 }
 
 func init() {
+	defaultPath := "portfolio.json"
+	if homeDir, err := os.UserHomeDir(); err == nil {
+		defaultPath = filepath.Join(homeDir, ".fincli", "portfolio.json")
+	}
+
 	portfolioCmd.Flags().BoolVarP(&showTotalOnly, "total", "t", false, "Show only total portfolio value")
-	portfolioCmd.Flags().StringVarP(&portfolioFile, "file", "f", "portfolio.json", "Path to portfolio JSON file")
+	portfolioCmd.Flags().StringVarP(&portfolioFile, "file", "f", defaultPath, "Path to portfolio JSON file")
 }

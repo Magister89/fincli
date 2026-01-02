@@ -94,13 +94,13 @@ go build -o fincli ./cmd/fincli
 | Option | Short | Description |
 |--------|-------|-------------|
 | `--total` | `-t` | Display only total value |
-| `--file` | `-f` | Path to portfolio JSON (default: `portfolio.json`) |
+| `--file` | `-f` | Path to portfolio JSON (default: `~/.fincli/portfolio.json`) |
 
 ---
 
 ## ⚙️ Configuration
 
-Create a `portfolio.json` file:
+Create a `portfolio.json` file in `~/.fincli/`:
 
 ```json
 [
@@ -166,9 +166,12 @@ fincli/
 │   ├── finance/          # Yahoo Finance client
 │   ├── portfolio/        # Portfolio logic
 │   └── display/          # Terminal output
-├── portfolio.json        # Portfolio data
 ├── go.mod
 └── README.md
+
+~/.fincli/
+├── portfolio.json        # Portfolio data (default location)
+└── cache.json            # Quote cache (auto-generated)
 ```
 
 ---
