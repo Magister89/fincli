@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/giorgio/fincli/internal/display"
 	"github.com/giorgio/fincli/internal/portfolio"
@@ -24,6 +26,11 @@ var portfolioCmd = &cobra.Command{
 			return err
 		}
 
+		// Warn about skipped tickers
+		if skipped := p.GetSkipped(); len(skipped) > 0 {
+			fmt.Fprintf(os.Stderr, "Warning: failed to fetch data for: %s\n", strings.Join(skipped, ", "))
+		}
+
 		// Check if single or multi-currency portfolio
 		if p.IsSingleCurrency() {
 			currency := p.GetCurrency()
@@ -33,50 +40,19 @@ var portfolioCmd = &cobra.Command{
 				return nil
 			}
 
-			// Build display rows
-			items := p.GetItems()
-			rows := make([]display.PortfolioRow, len(items))
-			for i, item := range items {
-				rows[i] = display.PortfolioRow{
-					Ticker:   item.Ticker,
-					Value:    item.Price,
-					PnL:      item.PnL,
-					Currency: item.Currency,
-				}
-			}
-
-			display.PrintPortfolioTable(rows, true, p.GetTotalValue(), p.GetTotalPnL(), currency)
+			display.PrintPortfolioTable(p.GetItems(), true, p.GetTotalValue(), p.GetTotalPnL(), currency)
 			return nil
 		}
 
 		// Multi-currency portfolio
-		currencyGroups := p.GetCurrencyGroups()
-		displayGroups := make([]display.CurrencyGroup, len(currencyGroups))
-
-		for i, group := range currencyGroups {
-			rows := make([]display.PortfolioRow, len(group.Items))
-			for j, item := range group.Items {
-				rows[j] = display.PortfolioRow{
-					Ticker:   item.Ticker,
-					Value:    item.Price,
-					PnL:      item.PnL,
-					Currency: item.Currency,
-				}
-			}
-			displayGroups[i] = display.CurrencyGroup{
-				Currency:   group.Currency,
-				Rows:       rows,
-				TotalValue: group.TotalValue,
-				TotalPnL:   group.TotalPnL,
-			}
-		}
+		groups := p.GetCurrencyGroups()
 
 		if showTotalOnly {
-			display.PrintMultiCurrencyTotalOnly(displayGroups)
+			display.PrintMultiCurrencyTotalOnly(groups)
 			return nil
 		}
 
-		display.PrintMultiCurrencyPortfolio(displayGroups)
+		display.PrintMultiCurrencyPortfolio(groups)
 		return nil
 	},
 }

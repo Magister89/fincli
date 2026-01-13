@@ -1,69 +1,33 @@
-<div align="center">
-
 # FinCLI
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.21%2B-00ADD8?logo=go)](https://go.dev/)
 
-**A fast CLI tool for tracking investment portfolios with real-time market data**
+A CLI tool for tracking investment portfolios with real-time Yahoo Finance data.
 
-[Features](#-features) • [Quick Start](#-quick-start) • [Usage](#-usage) • [Roadmap](#️-roadmap)
+## Features
 
----
+- Real-time quotes from Yahoo Finance API
+- Portfolio tracking with daily P&L calculations
+- Multi-currency support with grouped subtotals
+- Concurrent data fetching for fast updates
+- File-based caching with 2-minute TTL
+- Single binary, no runtime dependencies
 
-![Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen)
-
-</div>
-
-## ✨ Features
-
-| Feature | Description |
-|---------|-------------|
-| **Real-time Data** | Direct Yahoo Finance API integration for live pricing |
-| **Portfolio Tracking** | Monitor holdings with current values and daily P&L |
-| **Concurrent Fetching** | Parallel requests via goroutines for fast updates |
-| **Single Binary** | No runtime dependencies, cross-platform executable |
-
----
-
-## 🛠️ Tech Stack
-
-| Technology | Purpose |
-|------------|---------|
-| **Go 1.21+** | Runtime |
-| **Cobra** | CLI framework |
-| **Lipgloss** | Terminal styling |
-| **Yahoo Finance API** | Market data |
-
----
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Go 1.21 or higher
-
-### Installation
+## Installation
 
 ```bash
-# Clone the repository
 git clone https://github.com/gicrisf/fincli.git
 cd fincli
-
-# Build
 go build -o fincli ./cmd/fincli
-
-# Run
-./fincli --help
 ```
 
----
+## Usage
 
-## 📖 Usage
-
-### Ticker Command
+### Ticker
 
 ```bash
-# Basic price info
+# Get current price
 ./fincli ticker AAPL
 
 # Full information
@@ -73,12 +37,7 @@ go build -o fincli ./cmd/fincli
 ./fincli ticker AAPL --attribute marketCap
 ```
 
-| Option | Short | Description |
-|--------|-------|-------------|
-| `--info` | `-i` | Display all available information |
-| `--attribute` | `-a` | Display a specific attribute |
-
-### Portfolio Command
+### Portfolio
 
 ```bash
 # Show portfolio with P&L
@@ -91,16 +50,9 @@ go build -o fincli ./cmd/fincli
 ./fincli portfolio --file ~/my_portfolio.json
 ```
 
-| Option | Short | Description |
-|--------|-------|-------------|
-| `--total` | `-t` | Display only total value |
-| `--file` | `-f` | Path to portfolio JSON (default: `~/.fincli/portfolio.json`) |
+## Configuration
 
----
-
-## ⚙️ Configuration
-
-Create a `portfolio.json` file in `~/.fincli/`:
+Create `~/.fincli/portfolio.json`:
 
 ```json
 [
@@ -109,14 +61,9 @@ Create a `portfolio.json` file in `~/.fincli/`:
 ]
 ```
 
-| Field | Description |
-|-------|-------------|
-| `ticker` | Stock/ETF symbol (use exchange suffix for non-US, e.g. `.MI`) |
-| `shares` | Number of shares owned |
+Use exchange suffixes for non-US markets (e.g., `.MI` for Milan, `.L` for London).
 
----
-
-## 📦 Cross-Compilation
+## Cross-Compilation
 
 ```bash
 # Windows
@@ -132,70 +79,16 @@ GOOS=darwin GOARCH=arm64 go build -o fincli-mac-arm ./cmd/fincli
 GOOS=linux GOARCH=amd64 go build -o fincli ./cmd/fincli
 ```
 
----
+## Development
 
-## 🗺️ Roadmap
+```bash
+# Run tests
+go test ./...
 
-### ✅ Completed
-
-- [x] Core CLI with Cobra
-- [x] Yahoo Finance integration
-- [x] Portfolio tracking with P&L
-- [x] Concurrent ticker fetching
-- [x] Colored terminal output
-- [x] **Response Caching** — File-based cache at `~/.fincli/cache.json` with 2-minute TTL
-
-### 🔄 In Progress
-
-<!-- TODO -->
-
-### 📋 Planned
-
-<!-- TODO -->
-
----
-
-## 📁 Project Structure
-
-```
-fincli/
-├── cmd/fincli/
-│   └── main.go           # Entry point
-├── internal/
-│   ├── cli/              # CLI commands
-│   ├── finance/          # Yahoo Finance client
-│   ├── portfolio/        # Portfolio logic
-│   └── display/          # Terminal output
-├── go.mod
-└── README.md
-
-~/.fincli/
-├── portfolio.json        # Portfolio data (default location)
-└── cache.json            # Quote cache (auto-generated)
+# Build
+go build -o fincli ./cmd/fincli
 ```
 
----
+## License
 
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
----
-
-## 📄 License
-
-This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
-
----
-
-<div align="center">
-
-**Made with ❤️ by [Giorgio Cembran](https://github.com/gicrisf)**
-
-</div>
+MIT

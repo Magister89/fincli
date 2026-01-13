@@ -1,20 +1,27 @@
 package finance
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/giorgio/fincli/internal/cache"
 )
 
+var validTickerRegex = regexp.MustCompile(`^[A-Za-z0-9^._-]{1,20}$`)
+
 const (
-	chartBaseURL = "https://query1.finance.yahoo.com/v8/finance/chart"
-	userAgent    = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+	chartBaseURL   = "https://query1.finance.yahoo.com/v8/finance/chart"
+	userAgent      = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+	maxConcurrent  = 10              // Limit concurrent requests to avoid rate limiting
+	requestTimeout = 10 * time.Second // Timeout for individual requests
 )
 
 // Client is the Yahoo Finance HTTP client
@@ -42,8 +49,25 @@ func NewClient() *Client {
 	}
 }
 
+// ValidateSymbol checks if a ticker symbol has a valid format
+func ValidateSymbol(symbol string) error {
+	symbol = strings.TrimSpace(symbol)
+	if symbol == "" {
+		return fmt.Errorf("empty ticker symbol")
+	}
+	if !validTickerRegex.MatchString(symbol) {
+		return fmt.Errorf("invalid ticker symbol: %s", symbol)
+	}
+	return nil
+}
+
 // GetQuote fetches quote data for a single ticker
 func (c *Client) GetQuote(symbol string) (*QuoteData, error) {
+	symbol = strings.TrimSpace(strings.ToUpper(symbol))
+	if err := ValidateSymbol(symbol); err != nil {
+		return nil, err
+	}
+
 	// Check cache first
 	if c.cache != nil {
 		if cached, ok := c.cache.Get(symbol); ok {
@@ -63,9 +87,12 @@ func (c *Client) GetQuote(symbol string) (*QuoteData, error) {
 		}
 	}
 
-	url := fmt.Sprintf("%s/%s", chartBaseURL, url.PathEscape(symbol))
+	reqURL := fmt.Sprintf("%s/%s", chartBaseURL, url.PathEscape(symbol))
 
-	req, err := http.NewRequest("GET", url, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
@@ -143,11 +170,15 @@ func (c *Client) GetQuotes(symbols []string) (map[string]*QuoteData, error) {
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	errors := make(chan error, len(symbols))
+	sem := make(chan struct{}, maxConcurrent)
 
 	for _, symbol := range symbols {
 		wg.Add(1)
 		go func(sym string) {
+			sem <- struct{}{}        // acquire semaphore
+			defer func() { <-sem }() // release semaphore
 			defer wg.Done()
+
 			quote, err := c.GetQuote(sym)
 			if err != nil {
 				errors <- fmt.Errorf("%s: %w", sym, err)

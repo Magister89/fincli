@@ -126,12 +126,17 @@ func (c *Cache) load() {
 	json.Unmarshal(data, &c.entries)
 }
 
-// save writes the cache to disk
+// save writes the cache to disk atomically
 func (c *Cache) save() {
 	data, err := json.MarshalIndent(c.entries, "", "  ")
 	if err != nil {
 		return
 	}
 
-	os.WriteFile(c.path, data, 0644)
+	// Write to temp file first, then rename for atomic operation
+	tempPath := c.path + ".tmp"
+	if err := os.WriteFile(tempPath, data, 0600); err != nil {
+		return
+	}
+	os.Rename(tempPath, c.path)
 }

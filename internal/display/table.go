@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/giorgio/fincli/internal/portfolio"
 )
 
 // FormatWithThousands formats a float64 with thousands separator (comma)
@@ -89,31 +90,15 @@ var (
 	dimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 )
 
-// PortfolioRow represents a row in the portfolio table
-type PortfolioRow struct {
-	Ticker   string
-	Value    float64
-	PnL      float64
-	Currency string
-}
-
-// CurrencyGroup represents a group of portfolio items with the same currency
-type CurrencyGroup struct {
-	Currency   string
-	Rows       []PortfolioRow
-	TotalValue float64
-	TotalPnL   float64
-}
-
 // PrintPortfolioTable prints a formatted portfolio table (single currency)
-func PrintPortfolioTable(rows []PortfolioRow, showTotal bool, totalValue float64, totalPnL float64, currency string) {
+func PrintPortfolioTable(items []portfolio.EnrichedItem, showTotal bool, totalValue float64, totalPnL float64, currency string) {
 	printHeader()
 	separator := getSeparator()
 	fmt.Println(dimStyle.Render(separator))
 
 	// Print rows
-	for _, row := range rows {
-		printRow(row)
+	for _, item := range items {
+		printItem(item)
 	}
 
 	if showTotal {
@@ -123,15 +108,15 @@ func PrintPortfolioTable(rows []PortfolioRow, showTotal bool, totalValue float64
 }
 
 // PrintMultiCurrencyPortfolio prints a portfolio grouped by currency with subtotals
-func PrintMultiCurrencyPortfolio(groups []CurrencyGroup) {
+func PrintMultiCurrencyPortfolio(groups []portfolio.CurrencyGroup) {
 	printHeader()
 	separator := getSeparator()
 	fmt.Println(dimStyle.Render(separator))
 
 	for i, group := range groups {
 		// Print rows for this currency group
-		for _, row := range group.Rows {
-			printRow(row)
+		for _, item := range group.Items {
+			printItem(item)
 		}
 
 		// Print subtotal for this currency
@@ -166,12 +151,12 @@ func getSeparator() string {
 	)
 }
 
-// printRow prints a single portfolio row
-func printRow(row PortfolioRow) {
-	tickerStr := fmt.Sprintf("%-*s", colTicker, row.Ticker)
-	formattedValue := FormatWithThousands(row.Value, 2)
-	valueStr := fmt.Sprintf("%*s %s", colValue-4, formattedValue, row.Currency)
-	pnlStr := formatPnL(row.PnL)
+// printItem prints a single portfolio item
+func printItem(item portfolio.EnrichedItem) {
+	tickerStr := fmt.Sprintf("%-*s", colTicker, item.Ticker)
+	formattedValue := FormatWithThousands(item.Price, 2)
+	valueStr := fmt.Sprintf("%*s %s", colValue-4, formattedValue, item.Currency)
+	pnlStr := formatPnL(item.PnL)
 
 	fmt.Printf("%s  %s  %s\n",
 		blueStyle.Render(tickerStr),
@@ -212,7 +197,7 @@ func PrintTotalOnly(totalValue float64, totalPnL float64, currency string) {
 }
 
 // PrintMultiCurrencyTotalOnly prints totals per currency when using --total with multi-currency
-func PrintMultiCurrencyTotalOnly(groups []CurrencyGroup) {
+func PrintMultiCurrencyTotalOnly(groups []portfolio.CurrencyGroup) {
 	// Header
 	header := fmt.Sprintf("%-*s  %-*s", 16, "Total Value", 12, "P&L")
 	fmt.Println(headerStyle.Render(header))

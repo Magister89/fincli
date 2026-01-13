@@ -18,6 +18,7 @@ type EnrichedItem struct {
 type Portfolio struct {
 	items      []EnrichedItem
 	totalValue float64
+	skipped    []string // tickers that failed to fetch
 }
 
 // New creates a new Portfolio from a file
@@ -56,12 +57,13 @@ func (p *Portfolio) enrich(items []PortfolioItem) error {
 
 	// Enrich each item
 	p.items = make([]EnrichedItem, 0, len(items))
+	p.skipped = make([]string, 0)
 	p.totalValue = 0
 
 	for _, item := range items {
 		quote, ok := quotes[item.Ticker]
 		if !ok {
-			// Skip items without quote data
+			p.skipped = append(p.skipped, item.Ticker)
 			continue
 		}
 
@@ -188,4 +190,9 @@ func (p *Portfolio) GetCurrency() string {
 		return p.items[0].Currency
 	}
 	return ""
+}
+
+// GetSkipped returns tickers that failed to fetch
+func (p *Portfolio) GetSkipped() []string {
+	return p.skipped
 }
