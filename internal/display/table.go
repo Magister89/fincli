@@ -3,6 +3,7 @@ package display
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/giorgio/fincli/internal/portfolio"
@@ -77,6 +78,7 @@ func FormatIntWithThousands(value int64) string {
 // Column widths
 const (
 	colTicker = 12
+	colQty    = 8
 	colValue  = 18
 	colPnL    = 12
 )
@@ -134,8 +136,9 @@ func PrintMultiCurrencyPortfolio(groups []portfolio.CurrencyGroup) {
 
 // printHeader prints the table header
 func printHeader() {
-	header := fmt.Sprintf("%-*s  %-*s  %-*s",
+	header := fmt.Sprintf("%-*s  %*s  %-*s  %-*s",
 		colTicker, "Ticker",
+		colQty, "Qty",
 		colValue, "Value",
 		colPnL, "P&L",
 	)
@@ -144,8 +147,9 @@ func printHeader() {
 
 // getSeparator returns the separator line
 func getSeparator() string {
-	return fmt.Sprintf("%-*s  %-*s  %-*s",
+	return fmt.Sprintf("%-*s  %*s  %-*s  %-*s",
 		colTicker, "────────────",
+		colQty, "────────",
 		colValue, "──────────────────",
 		colPnL, "────────────",
 	)
@@ -154,12 +158,14 @@ func getSeparator() string {
 // printItem prints a single portfolio item
 func printItem(item portfolio.EnrichedItem) {
 	tickerStr := fmt.Sprintf("%-*s", colTicker, item.Ticker)
+	qtyStr := fmt.Sprintf("%*s", colQty, FormatIntWithThousands(int64(item.Shares)))
 	formattedValue := FormatWithThousands(item.Price, 2)
 	valueStr := fmt.Sprintf("%*s %s", colValue-4, formattedValue, item.Currency)
 	pnlStr := formatPnL(item.PnL)
 
-	fmt.Printf("%s  %s  %s\n",
+	fmt.Printf("%s  %s  %s  %s\n",
 		blueStyle.Render(tickerStr),
+		qtyStr,
 		valueStr,
 		pnlStr,
 	)
@@ -168,12 +174,14 @@ func printItem(item portfolio.EnrichedItem) {
 // printTotal prints a total/subtotal row
 func printTotal(label string, value float64, pnl float64, currency string) {
 	totalLabel := fmt.Sprintf("%-*s", colTicker, label)
+	qtyPad := fmt.Sprintf("%*s", colQty, "")
 	formattedTotal := FormatWithThousands(value, 2)
 	totalValueStr := fmt.Sprintf("%*s %s", colValue-4, formattedTotal, currency)
 	totalPnLStr := formatPnL(pnl)
 
-	fmt.Printf("%s  %s  %s\n",
+	fmt.Printf("%s  %s  %s  %s\n",
 		boldStyle.Render(totalLabel),
+		qtyPad,
 		boldStyle.Render(totalValueStr),
 		totalPnLStr,
 	)
@@ -274,7 +282,42 @@ func PrintSingleAttribute(symbol, attribute, value string) {
 	fmt.Printf("%s  %s\n", blueStyle.Render(attrStr), valueStr)
 }
 
-// formatPnL formats the P&L value with color and arrow
+// formatDuration returns a human-readable duration string
+func formatDuration(d time.Duration) string {
+	if d < 5*time.Second {
+		return "just now"
+	}
+	if d < time.Minute {
+		return fmt.Sprintf("%d sec ago", int(d.Seconds()))
+	}
+	return fmt.Sprintf("%d min ago", int(d.Minutes()))
+}
+
+// PrintCacheFooter prints a dim footer line showing when data was fetched
+func PrintCacheFooter(info portfolio.FetchInfo) {
+	if info.OldestFetchedAt.IsZero() {
+		return
+	}
+
+	var msg string
+	now := time.Now()
+
+	if info.AllFromCache {
+		age := now.Sub(info.OldestFetchedAt)
+		msg = fmt.Sprintf("Data from cache (%s)", formatDuration(age))
+	} else if info.AnyFromCache {
+		oldestAge := now.Sub(info.OldestFetchedAt)
+		msg = fmt.Sprintf("Last updated: %s (oldest data: %s)",
+			info.NewestFetchedAt.Format("15:04:05"),
+			formatDuration(oldestAge))
+	} else {
+		msg = fmt.Sprintf("Last updated: %s", info.NewestFetchedAt.Format("15:04:05"))
+	}
+
+	fmt.Printf("\n%s\n", dimStyle.Render(msg))
+}
+
+// formatPnL formats the P&L value with color and arrow, right-aligned to colPnL
 func formatPnL(pnl float64) string {
 	var arrow string
 	var style lipgloss.Style
@@ -287,5 +330,6 @@ func formatPnL(pnl float64) string {
 		style = redStyle
 	}
 
-	return style.Render(fmt.Sprintf("%s %.2f%%", arrow, pnl))
+	raw := fmt.Sprintf("%s %.2f%%", arrow, pnl)
+	return style.Render(fmt.Sprintf("%*s", colPnL, raw))
 }

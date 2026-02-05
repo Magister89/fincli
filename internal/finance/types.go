@@ -1,18 +1,22 @@
 package finance
 
+import "time"
+
 // QuoteData contains the essential financial data for a ticker
 type QuoteData struct {
-	Symbol        string
-	LastPrice     float64
-	PreviousClose float64
-	Currency      string
-	Open          float64
-	DayHigh       float64
-	DayLow        float64
-	Volume        int64
-	MarketCap     int64
+	Symbol           string
+	LastPrice        float64
+	PreviousClose    float64
+	Currency         string
+	Open             float64
+	DayHigh          float64
+	DayLow           float64
+	Volume           int64
+	MarketCap        int64
 	FiftyTwoWeekHigh float64
 	FiftyTwoWeekLow  float64
+	FetchedAt        time.Time
+	FromCache        bool
 }
 
 // yahooChartResponse represents the Yahoo Finance API response structure

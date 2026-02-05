@@ -86,6 +86,23 @@ func (c *Cache) Get(symbol string) (*QuoteCache, bool) {
 	return &entry.Data, true
 }
 
+// GetEntry retrieves the full cache entry (including timestamp) if valid
+func (c *Cache) GetEntry(symbol string) (*CacheEntry, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	entry, ok := c.entries[symbol]
+	if !ok {
+		return nil, false
+	}
+
+	if time.Since(time.Unix(entry.Timestamp, 0)) > CacheTTL {
+		return nil, false
+	}
+
+	return &entry, true
+}
+
 // Set stores data in the cache with current timestamp
 func (c *Cache) Set(symbol string, data QuoteCache) {
 	c.mu.Lock()

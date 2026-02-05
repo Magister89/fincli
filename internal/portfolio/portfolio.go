@@ -1,8 +1,18 @@
 package portfolio
 
 import (
+	"time"
+
 	"github.com/giorgio/fincli/internal/finance"
 )
+
+// FetchInfo holds metadata about when and how quote data was fetched
+type FetchInfo struct {
+	OldestFetchedAt time.Time
+	NewestFetchedAt time.Time
+	AllFromCache    bool
+	AnyFromCache    bool
+}
 
 // EnrichedItem contains portfolio item with real-time market data
 type EnrichedItem struct {
@@ -19,6 +29,7 @@ type Portfolio struct {
 	items      []EnrichedItem
 	totalValue float64
 	skipped    []string // tickers that failed to fetch
+	fetchInfo  FetchInfo
 }
 
 // New creates a new Portfolio from a file
@@ -59,12 +70,33 @@ func (p *Portfolio) enrich(items []PortfolioItem) error {
 	p.items = make([]EnrichedItem, 0, len(items))
 	p.skipped = make([]string, 0)
 	p.totalValue = 0
+	p.fetchInfo = FetchInfo{AllFromCache: true}
 
+	first := true
 	for _, item := range items {
 		quote, ok := quotes[item.Ticker]
 		if !ok {
 			p.skipped = append(p.skipped, item.Ticker)
 			continue
+		}
+
+		// Track fetch metadata
+		if first {
+			p.fetchInfo.OldestFetchedAt = quote.FetchedAt
+			p.fetchInfo.NewestFetchedAt = quote.FetchedAt
+			first = false
+		} else {
+			if quote.FetchedAt.Before(p.fetchInfo.OldestFetchedAt) {
+				p.fetchInfo.OldestFetchedAt = quote.FetchedAt
+			}
+			if quote.FetchedAt.After(p.fetchInfo.NewestFetchedAt) {
+				p.fetchInfo.NewestFetchedAt = quote.FetchedAt
+			}
+		}
+		if quote.FromCache {
+			p.fetchInfo.AnyFromCache = true
+		} else {
+			p.fetchInfo.AllFromCache = false
 		}
 
 		price := float64(item.Shares) * quote.LastPrice
@@ -195,4 +227,9 @@ func (p *Portfolio) GetCurrency() string {
 // GetSkipped returns tickers that failed to fetch
 func (p *Portfolio) GetSkipped() []string {
 	return p.skipped
+}
+
+// GetFetchInfo returns metadata about when data was fetched
+func (p *Portfolio) GetFetchInfo() FetchInfo {
+	return p.fetchInfo
 }

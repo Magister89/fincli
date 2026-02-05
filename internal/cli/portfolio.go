@@ -37,22 +37,21 @@ var portfolioCmd = &cobra.Command{
 
 			if showTotalOnly {
 				display.PrintTotalOnly(p.GetTotalValue(), p.GetTotalPnL(), currency)
-				return nil
+			} else {
+				display.PrintPortfolioTable(p.GetItems(), true, p.GetTotalValue(), p.GetTotalPnL(), currency)
 			}
+		} else {
+			// Multi-currency portfolio
+			groups := p.GetCurrencyGroups()
 
-			display.PrintPortfolioTable(p.GetItems(), true, p.GetTotalValue(), p.GetTotalPnL(), currency)
-			return nil
+			if showTotalOnly {
+				display.PrintMultiCurrencyTotalOnly(groups)
+			} else {
+				display.PrintMultiCurrencyPortfolio(groups)
+			}
 		}
 
-		// Multi-currency portfolio
-		groups := p.GetCurrencyGroups()
-
-		if showTotalOnly {
-			display.PrintMultiCurrencyTotalOnly(groups)
-			return nil
-		}
-
-		display.PrintMultiCurrencyPortfolio(groups)
+		display.PrintCacheFooter(p.GetFetchInfo())
 		return nil
 	},
 }

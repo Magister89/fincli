@@ -70,19 +70,21 @@ func (c *Client) GetQuote(symbol string) (*QuoteData, error) {
 
 	// Check cache first
 	if c.cache != nil {
-		if cached, ok := c.cache.Get(symbol); ok {
+		if entry, ok := c.cache.GetEntry(symbol); ok {
 			return &QuoteData{
-				Symbol:           cached.Symbol,
-				LastPrice:        cached.LastPrice,
-				PreviousClose:    cached.PreviousClose,
-				Currency:         cached.Currency,
-				Open:             cached.Open,
-				DayHigh:          cached.DayHigh,
-				DayLow:           cached.DayLow,
-				Volume:           cached.Volume,
-				MarketCap:        cached.MarketCap,
-				FiftyTwoWeekHigh: cached.FiftyTwoWeekHigh,
-				FiftyTwoWeekLow:  cached.FiftyTwoWeekLow,
+				Symbol:           entry.Data.Symbol,
+				LastPrice:        entry.Data.LastPrice,
+				PreviousClose:    entry.Data.PreviousClose,
+				Currency:         entry.Data.Currency,
+				Open:             entry.Data.Open,
+				DayHigh:          entry.Data.DayHigh,
+				DayLow:           entry.Data.DayLow,
+				Volume:           entry.Data.Volume,
+				MarketCap:        entry.Data.MarketCap,
+				FiftyTwoWeekHigh: entry.Data.FiftyTwoWeekHigh,
+				FiftyTwoWeekLow:  entry.Data.FiftyTwoWeekLow,
+				FetchedAt:        time.Unix(entry.Timestamp, 0),
+				FromCache:        true,
 			}, nil
 		}
 	}
@@ -138,6 +140,8 @@ func (c *Client) GetQuote(symbol string) (*QuoteData, error) {
 		Volume:           meta.RegularMarketVolume,
 		FiftyTwoWeekHigh: meta.FiftyTwoWeekHigh,
 		FiftyTwoWeekLow:  meta.FiftyTwoWeekLow,
+		FetchedAt:        time.Now(),
+		FromCache:        false,
 	}
 
 	// Cache the result
