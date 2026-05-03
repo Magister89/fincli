@@ -83,15 +83,6 @@ const (
 	colPnL    = 12
 )
 
-var (
-	greenStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
-	redStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
-	blueStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
-	boldStyle   = lipgloss.NewStyle().Bold(true)
-	headerStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
-	dimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-)
-
 // PrintPortfolioTable prints a formatted portfolio table (single currency)
 func PrintPortfolioTable(items []portfolio.EnrichedItem, showTotal bool, totalValue float64, totalPnL float64, currency string) {
 	printHeader()

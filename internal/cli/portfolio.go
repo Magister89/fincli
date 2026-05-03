@@ -28,7 +28,8 @@ var portfolioCmd = &cobra.Command{
 
 		// Warn about skipped tickers
 		if skipped := p.GetSkipped(); len(skipped) > 0 {
-			fmt.Fprintf(os.Stderr, "Warning: failed to fetch data for: %s\n", strings.Join(skipped, ", "))
+			message := fmt.Sprintf("Warning: failed to fetch data for: %s", strings.Join(skipped, ", "))
+			fmt.Fprintln(os.Stderr, display.RenderWarning(message))
 		}
 
 		// Check if single or multi-currency portfolio
