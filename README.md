@@ -1,7 +1,7 @@
 # FinCLI
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Go](https://img.shields.io/badge/Go-1.21%2B-00ADD8?logo=go)](https://go.dev/)
+[![Rust](https://img.shields.io/badge/Rust-1.95%2B-orange?logo=rust)](https://www.rust-lang.org/)
 
 A CLI tool for tracking investment portfolios with real-time Yahoo Finance data.
 
@@ -19,8 +19,10 @@ A CLI tool for tracking investment portfolios with real-time Yahoo Finance data.
 ```bash
 git clone https://github.com/gicrisf/fincli.git
 cd fincli
-go build -o fincli ./cmd/fincli
+cargo build --release
 ```
+
+The binary will be available at `target/release/fincli`.
 
 ## Usage
 
@@ -28,26 +30,26 @@ go build -o fincli ./cmd/fincli
 
 ```bash
 # Get current price
-./fincli ticker AAPL
+./target/release/fincli ticker AAPL
 
 # Full information
-./fincli ticker AAPL --info
+./target/release/fincli ticker AAPL --info
 
 # Specific attribute
-./fincli ticker AAPL --attribute marketCap
+./target/release/fincli ticker AAPL --attribute marketCap
 ```
 
 ### Portfolio
 
 ```bash
 # Show portfolio with P&L
-./fincli portfolio
+./target/release/fincli portfolio
 
 # Show only total value
-./fincli portfolio --total
+./target/release/fincli portfolio --total
 
 # Custom portfolio file
-./fincli portfolio --file ~/my_portfolio.json
+./target/release/fincli portfolio --file ~/my_portfolio.json
 ```
 
 ## Configuration
@@ -56,8 +58,8 @@ Create `~/.fincli/portfolio.json`:
 
 ```json
 [
-    {"ticker": "AAPL", "shares": 10},
-    {"ticker": "VWCE.MI", "shares": 68}
+  {"ticker": "AAPL", "shares": 10},
+  {"ticker": "VWCE.MI", "shares": 68}
 ]
 ```
 
@@ -65,28 +67,34 @@ Use exchange suffixes for non-US markets (e.g., `.MI` for Milan, `.L` for London
 
 ## Cross-Compilation
 
+Install the desired Rust target first, then build with `cargo`:
+
 ```bash
 # Windows
-GOOS=windows GOARCH=amd64 go build -o fincli.exe ./cmd/fincli
+rustup target add x86_64-pc-windows-msvc
+cargo build --release --target x86_64-pc-windows-msvc
 
 # macOS (Intel)
-GOOS=darwin GOARCH=amd64 go build -o fincli-mac ./cmd/fincli
+rustup target add x86_64-apple-darwin
+cargo build --release --target x86_64-apple-darwin
 
 # macOS (Apple Silicon)
-GOOS=darwin GOARCH=arm64 go build -o fincli-mac-arm ./cmd/fincli
+rustup target add aarch64-apple-darwin
+cargo build --release --target aarch64-apple-darwin
 
 # Linux
-GOOS=linux GOARCH=amd64 go build -o fincli ./cmd/fincli
+rustup target add x86_64-unknown-linux-gnu
+cargo build --release --target x86_64-unknown-linux-gnu
 ```
 
 ## Development
 
 ```bash
 # Run tests
-go test ./...
+cargo test
 
 # Build
-go build -o fincli ./cmd/fincli
+cargo build --release
 ```
 
 ## License
