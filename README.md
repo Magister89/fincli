@@ -16,6 +16,8 @@ A CLI tool for tracking investment portfolios with real-time Yahoo Finance data.
 
 ## Installation
 
+Build from source:
+
 ```bash
 git clone https://github.com/gicrisf/fincli.git
 cd fincli
@@ -24,32 +26,57 @@ cargo build --release
 
 The binary will be available at `target/release/fincli`.
 
+To install or update `fincli` in your `PATH`:
+
+```bash
+cargo install --path . --force
+```
+
+Make sure Cargo binaries are available in your shell:
+
+```bash
+export PATH="$HOME/.cargo/bin:$PATH"
+```
+
+Alternatively, install the release binary system-wide:
+
+```bash
+sudo install -m 755 target/release/fincli /usr/local/bin/fincli
+```
+
+If `/usr/local/bin/fincli` is a symlink to a local `./fincli` binary, update that binary with:
+
+```bash
+cargo build --release
+cp target/release/fincli ./fincli
+```
+
 ## Usage
 
 ### Ticker
 
 ```bash
 # Get current price
-./target/release/fincli ticker AAPL
+fincli ticker AAPL
 
 # Full information
-./target/release/fincli ticker AAPL --info
+fincli ticker AAPL --info
 
 # Specific attribute
-./target/release/fincli ticker AAPL --attribute marketCap
+fincli ticker AAPL --attribute marketCap
 ```
 
 ### Portfolio
 
 ```bash
 # Show portfolio with P&L
-./target/release/fincli portfolio
+fincli portfolio
 
 # Show only total value
-./target/release/fincli portfolio --total
+fincli portfolio --total
 
 # Custom portfolio file
-./target/release/fincli portfolio --file ~/my_portfolio.json
+fincli portfolio --file ~/my_portfolio.json
 ```
 
 ## Configuration
@@ -90,6 +117,10 @@ cargo build --release --target x86_64-unknown-linux-gnu
 ## Development
 
 ```bash
+# Run without installing
+cargo run -- ticker AAPL
+cargo run -- portfolio
+
 # Run tests
 cargo test
 
