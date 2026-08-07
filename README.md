@@ -86,11 +86,12 @@ Create `~/.fincli/portfolio.json`:
 ```json
 [
   {"ticker": "AAPL", "shares": 10},
-  {"ticker": "VWCE.MI", "shares": 68}
+  {"ticker": "VWCE.MI", "shares": 68},
+  {"ticker": "0P0000CWZD.F", "shares": 756.344}
 ]
 ```
 
-Use exchange suffixes for non-US markets (e.g., `.MI` for Milan, `.L` for London).
+Both whole and fractional share quantities are supported. Use exchange suffixes for non-US markets (e.g., `.MI` for Milan, `.L` for London).
 
 ## Cross-Compilation
 

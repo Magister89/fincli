@@ -75,6 +75,13 @@ pub fn format_int_with_thousands(value: i64) -> String {
     }
 }
 
+pub fn format_quantity(value: f64) -> String {
+    format_with_thousands(value, 8)
+        .trim_end_matches('0')
+        .trim_end_matches('.')
+        .to_string()
+}
+
 pub fn print_portfolio_table(
     items: &[EnrichedItem],
     show_total: bool,
@@ -235,7 +242,7 @@ fn separator() -> String {
 
 fn print_item(item: &EnrichedItem) {
     let ticker = format!("{:<COL_TICKER$}", item.ticker);
-    let quantity = format!("{:>COL_QTY$}", format_int_with_thousands(item.shares));
+    let quantity = format!("{:>COL_QTY$}", format_quantity(item.shares));
     let formatted_value = format_with_thousands(item.price, 2);
     let value = format!(
         "{:>width$} {}",
@@ -344,6 +351,21 @@ mod tests {
 
         for (value, expected) in tests {
             assert_eq!(format_int_with_thousands(value), expected);
+        }
+    }
+
+    #[test]
+    fn format_fractional_quantities() {
+        let tests = [
+            (218.0, "218"),
+            (756.344, "756.344"),
+            (1234.5, "1,234.5"),
+            (0.00000001, "0.00000001"),
+            (1.23000000, "1.23"),
+        ];
+
+        for (value, expected) in tests {
+            assert_eq!(format_quantity(value), expected);
         }
     }
 

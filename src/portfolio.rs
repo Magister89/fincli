@@ -9,7 +9,7 @@ use crate::finance::Client;
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct PortfolioItem {
     pub ticker: String,
-    pub shares: i64,
+    pub shares: f64,
 }
 
 pub fn load_portfolio(file_path: impl AsRef<Path>) -> Result<Vec<PortfolioItem>> {
@@ -29,7 +29,7 @@ pub fn load_portfolio(file_path: impl AsRef<Path>) -> Result<Vec<PortfolioItem>>
         if item.ticker.is_empty() {
             return Err(anyhow!("item {index}: missing 'ticker' field"));
         }
-        if item.shares <= 0 {
+        if !item.shares.is_finite() || item.shares <= 0.0 {
             return Err(anyhow!("item {index}: 'shares' must be positive"));
         }
     }
@@ -48,7 +48,7 @@ pub struct FetchInfo {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnrichedItem {
     pub ticker: String,
-    pub shares: i64,
+    pub shares: f64,
     pub price: f64,
     pub previous_close: f64,
     pub pnl: f64,
@@ -106,8 +106,8 @@ impl Portfolio {
 
             self.track_fetch_info(quote.fetched_at, quote.from_cache);
 
-            let price = item.shares as f64 * quote.last_price;
-            let previous_close = item.shares as f64 * quote.previous_close;
+            let price = item.shares * quote.last_price;
+            let previous_close = item.shares * quote.previous_close;
             let pnl = if previous_close > 0.0 {
                 ((price / previous_close) - 1.0) * 100.0
             } else {
@@ -254,7 +254,15 @@ mod tests {
         let items = load_portfolio(path).expect("portfolio");
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].ticker, "AAPL");
-        assert_eq!(items[0].shares, 10);
+        assert_eq!(items[0].shares, 10.0);
+    }
+
+    #[test]
+    fn load_fractional_shares() {
+        let path = create_temp_file(r#"[{"ticker": "FUND", "shares": 756.344}]"#);
+
+        let items = load_portfolio(path).expect("portfolio");
+        assert_eq!(items[0].shares, 756.344);
     }
 
     #[test]
