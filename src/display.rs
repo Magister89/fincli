@@ -1,6 +1,9 @@
 use std::time::Duration;
 
+use chrono::NaiveDate;
+
 use crate::portfolio::{CurrencyGroup, EnrichedItem, FetchInfo};
+use crate::quote_policy::PortfolioSummary;
 
 const GREEN: &str = "\x1b[38;2;166;209;137m";
 const RED: &str = "\x1b[38;2;231;130;132m";
@@ -25,6 +28,9 @@ pub struct TickerInfoRow {
 }
 
 pub fn format_with_thousands(value: f64, decimals: usize) -> String {
+    if !value.is_finite() {
+        return "N/A".to_string();
+    }
     let formatted = format!("{value:.decimals$}");
     let (integer, decimal) = formatted
         .split_once('.')
@@ -82,25 +88,27 @@ pub fn format_quantity(value: f64) -> String {
         .to_string()
 }
 
-pub fn print_portfolio_table(
-    items: &[EnrichedItem],
-    show_total: bool,
-    total_value: f64,
-    total_pnl: f64,
-    currency: &str,
-) {
+pub fn print_portfolio_table(items: &[EnrichedItem], summary: &PortfolioSummary, currency: &str) {
     print_header();
     let separator = separator();
     println!("{}", dim(&separator));
 
     for item in items {
-        print_item(item);
+        print_item(item, summary.session.reference_date);
     }
 
-    if show_total {
-        println!("{}", dim(&separator));
-        print_total("Total", total_value, total_pnl, currency);
-    }
+    println!("{}", dim(&separator));
+    print_total(
+        if summary.unvalued_positions > 0 {
+            "Subtotal"
+        } else {
+            "Total"
+        },
+        summary,
+        currency,
+    );
+    print_summary_lines(summary, currency, "");
+    print_valuation_comparisons(items, summary.session.reference_date);
 }
 
 pub fn print_multi_currency_portfolio(groups: &[CurrencyGroup]) {
@@ -110,16 +118,18 @@ pub fn print_multi_currency_portfolio(groups: &[CurrencyGroup]) {
 
     for (index, group) in groups.iter().enumerate() {
         for item in &group.items {
-            print_item(item);
+            print_item(item, group.summary.session.reference_date);
         }
 
         println!("{}", dim(&separator));
-        print_total(
-            "Subtotal",
-            group.total_value,
-            group.total_pnl,
+        print_total("Subtotal", &group.summary, &group.currency);
+        print_summary_lines(
+            &group.summary,
             &group.currency,
+            &format!("{} ", group.currency),
         );
+
+        print_valuation_comparisons(&group.items, group.summary.session.reference_date);
 
         if index < groups.len() - 1 {
             println!();
@@ -129,29 +139,60 @@ pub fn print_multi_currency_portfolio(groups: &[CurrencyGroup]) {
     }
 }
 
-pub fn print_total_only(total_value: f64, total_pnl: f64, currency: &str) {
-    let header = format!("{:<16}  {:<12}", "Total Value", "P&L");
+pub fn print_total_only(summary: &PortfolioSummary, currency: &str, items: &[EnrichedItem]) {
+    let label = if summary.unvalued_positions > 0 {
+        "Priced subtotal"
+    } else {
+        "Total Value"
+    };
+    let header = format!("{label:<16}  {:<12}", "Session P&L");
     println!("{}", header_style(&header));
 
     let separator = format!("{:<16}  {:<12}", "────────────────", "────────────");
     println!("{}", dim(&separator));
 
-    let formatted_value = format_with_thousands(total_value, 2);
+    let formatted_value = valuation_label(summary);
     let value = format!("{:>12} {currency}", formatted_value);
-    println!("{}  {}", bold(&value), format_pnl(total_pnl));
+    println!("{}  {}", bold(&value), format_pnl(summary.session.percent));
+
+    print_summary_lines(summary, currency, "");
+    print_valuation_comparisons(items, summary.session.reference_date);
 }
 
 pub fn print_multi_currency_total_only(groups: &[CurrencyGroup]) {
-    let header = format!("{:<16}  {:<12}", "Total Value", "P&L");
+    let label = if groups
+        .iter()
+        .any(|group| group.summary.unvalued_positions > 0)
+    {
+        "Priced subtotal"
+    } else {
+        "Total Value"
+    };
+    let header = format!("{label:<16}  {:<12}", "Session P&L");
     println!("{}", header_style(&header));
 
     let separator = format!("{:<16}  {:<12}", "────────────────", "────────────");
     println!("{}", dim(&separator));
 
     for group in groups {
-        let formatted_value = format_with_thousands(group.total_value, 2);
+        let formatted_value = valuation_label(&group.summary);
         let value = format!("{:>12} {}", formatted_value, group.currency);
-        println!("{}  {}", bold(&value), format_pnl(group.total_pnl));
+        println!(
+            "{}  {}",
+            bold(&value),
+            format_pnl(group.summary.session.percent)
+        );
+    }
+
+    for group in groups {
+        print_summary_lines(
+            &group.summary,
+            &group.currency,
+            &format!("{} ", group.currency),
+        );
+    }
+    for group in groups {
+        print_valuation_comparisons(&group.items, group.summary.session.reference_date);
     }
 }
 
@@ -193,6 +234,7 @@ pub fn print_single_attribute(symbol: &str, attribute: &str, value: &str) {
 
 pub fn print_cache_footer(info: &FetchInfo) {
     let Some(oldest) = info.oldest_fetched_at else {
+        println!("\n{}", dim("Fetched: N/A (original timestamp unavailable)"));
         return;
     };
     let newest = info.newest_fetched_at.unwrap_or(oldest);
@@ -203,19 +245,23 @@ pub fn print_cache_footer(info: &FetchInfo) {
             .signed_duration_since(oldest)
             .to_std()
             .unwrap_or_default();
-        format!("Data from cache ({})", format_duration(age))
+        format!(
+            "Data from cache · Fetched: {} ({})",
+            oldest.format("%Y-%m-%d %H:%M:%S %:z"),
+            format_duration(age)
+        )
     } else if info.any_from_cache {
         let oldest_age = now
             .signed_duration_since(oldest)
             .to_std()
             .unwrap_or_default();
         format!(
-            "Last updated: {} (oldest data: {})",
+            "Fetched: {} (oldest fetch: {})",
             newest.format("%H:%M:%S"),
             format_duration(oldest_age)
         )
     } else {
-        format!("Last updated: {}", newest.format("%H:%M:%S"))
+        format!("Fetched: {}", newest.format("%H:%M:%S"))
     };
 
     println!("\n{}", dim(&message));
@@ -228,7 +274,7 @@ pub fn render_warning(message: &str) -> String {
 fn print_header() {
     let header = format!(
         "{:<COL_TICKER$}  {:>COL_QTY$}  {:<COL_VALUE$}  {:<COL_PNL$}",
-        "Ticker", "Qty", "Value", "P&L"
+        "Ticker", "Qty", "Value", "Session P&L"
     );
     println!("{}", header_style(&header));
 }
@@ -240,31 +286,64 @@ fn separator() -> String {
     )
 }
 
-fn print_item(item: &EnrichedItem) {
-    let ticker = format!("{:<COL_TICKER$}", item.ticker);
-    let quantity = format!("{:>COL_QTY$}", format_quantity(item.shares));
-    let formatted_value = format_with_thousands(item.price, 2);
-    let value = format!(
-        "{:>width$} {}",
-        formatted_value,
-        item.currency,
-        width = COL_VALUE - 4
-    );
-    let pnl = format_pnl(item.pnl);
-
-    println!("{}  {}  {}  {}", blue(&ticker), quantity, value, pnl);
+fn included_percent(item: &EnrichedItem, reference: Option<NaiveDate>) -> Option<f64> {
+    item.evaluation
+        .session_percent
+        .filter(|_| reference.is_some() && item.evaluation.session_date == reference)
 }
 
-fn print_total(label: &str, value: f64, pnl: f64, currency: &str) {
+fn quote_details(item: &EnrichedItem) -> String {
+    let date = item
+        .evaluation
+        .comparison_date
+        .map(|date| date.to_string())
+        .unwrap_or_else(|| "N/A".to_string());
+    format!(
+        "{} · quoted {date} UTC · {}{}",
+        item.evaluation.comparison_period.label(),
+        item.evaluation.quality.label(),
+        if item.from_cache { " · cached" } else { "" }
+    )
+}
+
+fn print_item(item: &EnrichedItem, reference: Option<NaiveDate>) {
+    let ticker = format!("{:<COL_TICKER$}", item.ticker);
+    let quantity = format!("{:>COL_QTY$}", format_quantity(item.shares));
+    let value = match item.evaluation.value {
+        Some(value) => format!(
+            "{:>width$} {}",
+            format_with_thousands(value, 2),
+            item.currency,
+            width = COL_VALUE - 4
+        ),
+        None => dim(&format!("{:>COL_VALUE$}", "N/A")),
+    };
+    let pnl = format_pnl(included_percent(item, reference));
+
+    println!("{}  {}  {}  {}", blue(&ticker), quantity, value, pnl);
+    println!("  {}", dim(&quote_details(item)));
+}
+
+fn valuation_label(summary: &PortfolioSummary) -> String {
+    if summary.session.total_positions > 0
+        && summary.unvalued_positions == summary.session.total_positions
+    {
+        "N/A".to_string()
+    } else {
+        format_with_thousands(summary.total_value, 2)
+    }
+}
+
+fn print_total(label: &str, summary: &PortfolioSummary, currency: &str) {
     let total_label = format!("{:<COL_TICKER$}", label);
     let quantity = format!("{:>COL_QTY$}", "");
-    let formatted_value = format_with_thousands(value, 2);
+    let formatted_value = valuation_label(summary);
     let total_value = format!(
         "{:>width$} {currency}",
         formatted_value,
         width = COL_VALUE - 4
     );
-    let total_pnl = format_pnl(pnl);
+    let total_pnl = format_pnl(summary.session.percent);
 
     println!(
         "{}  {}  {}  {}",
@@ -275,14 +354,132 @@ fn print_total(label: &str, value: f64, pnl: f64, currency: &str) {
     );
 }
 
-fn format_pnl(pnl: f64) -> String {
-    let (arrow, color) = if pnl >= 0.0 {
+/// Session aggregate and coverage, labeled with the reference UTC session
+/// date so it can never be mistaken for "today" or a 24h change.
+fn print_summary_lines(summary: &PortfolioSummary, currency: &str, prefix: &str) {
+    let session = &summary.session;
+    if summary.unvalued_positions > 0 {
+        println!(
+            "{}",
+            dim(&format!(
+                "{prefix}Priced subtotal only: {} requested positions have unknown valuation/currency.",
+                summary.unvalued_positions
+            ))
+        );
+    }
+    let reference = session
+        .reference_date
+        .map(|date| format!(" · ref {} UTC", date.format("%Y-%m-%d")))
+        .unwrap_or_default();
+    let label = format!(
+        "{prefix}Session P&L ({}{reference})",
+        session.status.as_str()
+    );
+
+    match session.amount {
+        Some(amount) => {
+            let percent = session
+                .percent
+                .map(|value| format!(" {}", format_percent_signed(value)))
+                .unwrap_or_default();
+            println!(
+                "{}: {}{}",
+                dim(&label),
+                format_amount_signed(amount, currency),
+                percent
+            );
+        }
+        None => println!(
+            "{}: {}",
+            dim(&label),
+            dim("N/A (no comparable session data)")
+        ),
+    }
+
+    let coverage = summary
+        .coverage_percent
+        .map(|value| format!("{value:.1}%"))
+        .unwrap_or_else(|| "N/A".to_string());
+    println!(
+        "{}",
+        dim(&format!(
+            "{prefix}Coverage: {coverage} of priced value · {}/{} positions",
+            session.included_positions, session.total_positions
+        ))
+    );
+}
+
+/// Raw price/baseline moves that are not session P&L (funds, stale or
+/// unclassified quotes), shown with their own source date and period.
+fn comparison_line(item: &EnrichedItem) -> String {
+    let change = match (
+        item.evaluation.comparison_amount,
+        item.evaluation.comparison_percent,
+    ) {
+        (Some(amount), Some(percent)) => format!(
+            "{} {}",
+            format_amount_signed(amount, &item.currency),
+            format_percent_signed(percent)
+        ),
+        _ => dim("N/A comparison"),
+    };
+    format!(
+        "  {} {change} · {}",
+        blue(&item.ticker),
+        dim(&quote_details(item))
+    )
+}
+
+fn print_valuation_comparisons(items: &[EnrichedItem], reference: Option<NaiveDate>) {
+    let comparisons: Vec<_> = items
+        .iter()
+        .filter(|item| included_percent(item, reference).is_none())
+        .collect();
+    if comparisons.is_empty() {
+        return;
+    }
+    println!(
+        "{}",
+        dim("Other quote comparisons (not aggregate session P&L):")
+    );
+    for item in comparisons {
+        println!("{}", comparison_line(item));
+    }
+}
+
+fn format_pnl(pnl: Option<f64>) -> String {
+    let Some(pnl) = pnl else {
+        return paint(DIM, &format!("{:>COL_PNL$}", "N/A"));
+    };
+    let (arrow, color) = pnl_style(pnl);
+    let raw = format!("{arrow} {pnl:.2}%");
+    paint(color, &format!("{:>COL_PNL$}", raw))
+}
+
+fn pnl_style(value: f64) -> (&'static str, &'static str) {
+    if value >= 0.0 {
         ("▲", GREEN)
     } else {
         ("▼", RED)
-    };
-    let raw = format!("{arrow} {pnl:.2}%");
-    paint(color, &format!("{:>COL_PNL$}", raw))
+    }
+}
+
+fn format_signed(value: f64) -> String {
+    let sign = if value < 0.0 { "-" } else { "+" };
+    format!("{sign}{}", format_with_thousands(value.abs(), 2))
+}
+
+fn format_amount_signed(value: f64, currency: &str) -> String {
+    let (arrow, color) = pnl_style(value);
+    paint(
+        color,
+        &format!("{arrow} {} {currency}", format_signed(value)),
+    )
+}
+
+fn format_percent_signed(value: f64) -> String {
+    let (_, color) = pnl_style(value);
+    paint(color, &format!("({:+.2}%)", value))
 }
 
 fn format_duration(duration: Duration) -> String {
@@ -374,5 +571,87 @@ mod tests {
         assert_eq!(format_duration(Duration::from_secs(2)), "just now");
         assert_eq!(format_duration(Duration::from_secs(12)), "12 sec ago");
         assert_eq!(format_duration(Duration::from_secs(120)), "2 min ago");
+    }
+
+    #[test]
+    fn unknown_pnl_is_neutral_na() {
+        let rendered = format_pnl(None);
+        assert!(rendered.contains("N/A"));
+        assert!(!rendered.contains(GREEN));
+        assert!(!rendered.contains(RED));
+    }
+
+    #[test]
+    fn real_zero_pnl_is_rendered_as_a_number() {
+        let rendered = format_pnl(Some(0.0));
+        assert!(rendered.contains("0.00%"));
+    }
+
+    #[test]
+    fn missing_fund_baseline_still_shows_quote_context() {
+        let now = 1_789_387_200_000;
+        let item = EnrichedItem {
+            ticker: "PERIODIC".to_string(),
+            shares: 100.0,
+            currency: "EUR".to_string(),
+            from_cache: true,
+            evaluation: crate::quote_policy::evaluate_position(
+                crate::quote_policy::PositionQuote {
+                    shares: 100.0,
+                    price: Some(21.0),
+                    previous_close: None,
+                    provider_type: Some("MUTUALFUND"),
+                    quote_time: Some(now),
+                    fetched_at: Some(now),
+                },
+                now,
+            ),
+        };
+        let line = comparison_line(&item);
+        for text in [
+            "PERIODIC",
+            "N/A comparison",
+            "valuation period",
+            "quoted 2026-09-14 UTC",
+            "incomplete",
+            "cached",
+        ] {
+            assert!(line.contains(text), "{text}: {line}");
+        }
+    }
+
+    #[test]
+    fn an_older_session_row_is_not_part_of_the_current_pnl() {
+        let now = 1_789_387_200_000;
+        let item = EnrichedItem {
+            ticker: "OLDER".to_string(),
+            shares: 10.0,
+            currency: "EUR".to_string(),
+            from_cache: false,
+            evaluation: crate::quote_policy::evaluate_position(
+                crate::quote_policy::PositionQuote {
+                    shares: 10.0,
+                    price: Some(100.0),
+                    previous_close: Some(95.0),
+                    provider_type: Some("ETF"),
+                    quote_time: Some(now - 3 * 86_400_000),
+                    fetched_at: Some(now),
+                },
+                now,
+            ),
+        };
+        assert_eq!(
+            included_percent(&item, NaiveDate::from_ymd_opt(2026, 9, 14)),
+            None
+        );
+        assert!(comparison_line(&item).contains("quoted 2026-09-11 UTC"));
+        assert_eq!(format_with_thousands(f64::INFINITY, 2), "N/A");
+    }
+
+    #[test]
+    fn signed_amounts_keep_thousands_separator() {
+        assert_eq!(format_signed(1234.5), "+1,234.50");
+        assert_eq!(format_signed(-9_876_543.21), "-9,876,543.21");
+        assert_eq!(format_signed(0.0), "+0.00");
     }
 }

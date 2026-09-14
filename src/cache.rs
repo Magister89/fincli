@@ -16,9 +16,9 @@ const CACHE_FILE: &str = "cache.json";
 pub struct QuoteCache {
     pub symbol: String,
     #[serde(rename = "lastPrice")]
-    pub last_price: f64,
+    pub last_price: Option<f64>,
     #[serde(rename = "previousClose")]
-    pub previous_close: f64,
+    pub previous_close: Option<f64>,
     pub currency: String,
     pub open: f64,
     #[serde(rename = "dayHigh")]
@@ -32,6 +32,22 @@ pub struct QuoteCache {
     pub fifty_two_week_high: f64,
     #[serde(rename = "fiftyTwoWeekLow")]
     pub fifty_two_week_low: f64,
+    /// Provider quote time, Unix milliseconds. Absent in legacy caches; it is
+    /// never invented, so legacy entries stay ineligible for session P&L.
+    #[serde(
+        default,
+        rename = "quoteTimeMs",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub quote_time_ms: Option<i64>,
+    /// Provider instrument/quote type. Absent in legacy caches.
+    #[serde(
+        default,
+        rename = "providerType",
+        alias = "provider_type",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub provider_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
@@ -76,6 +92,11 @@ impl Cache {
         } else {
             None
         }
+    }
+
+    /// Last observation for valuation fallback, without pretending it is fresh.
+    pub fn get_stored_entry(&self, symbol: &str) -> Option<CacheEntry> {
+        self.entries.get(symbol).cloned()
     }
 
     pub fn set(&mut self, symbol: &str, data: QuoteCache) {
@@ -138,7 +159,15 @@ fn now_unix() -> i64 {
 }
 
 fn entry_is_fresh(entry: &CacheEntry) -> bool {
-    now_unix().saturating_sub(entry.timestamp) <= CACHE_TTL.as_secs() as i64
+    entry_is_fresh_at(entry, now_unix())
+}
+
+fn entry_is_fresh_at(entry: &CacheEntry, now: i64) -> bool {
+    entry.timestamp > 0
+        && chrono::DateTime::from_timestamp(entry.timestamp, 0).is_some()
+        && now
+            .checked_sub(entry.timestamp)
+            .is_some_and(|age| (-300..=CACHE_TTL.as_secs() as i64).contains(&age))
 }
 
 fn temp_path(path: &Path) -> PathBuf {
@@ -159,8 +188,8 @@ mod tests {
     fn sample_quote(symbol: &str, price: f64) -> QuoteCache {
         QuoteCache {
             symbol: symbol.to_string(),
-            last_price: price,
-            previous_close: 0.0,
+            last_price: Some(price),
+            previous_close: Some(price - 1.0),
             currency: "USD".to_string(),
             open: 0.0,
             day_high: 0.0,
@@ -169,6 +198,8 @@ mod tests {
             market_cap: 0,
             fifty_two_week_high: 0.0,
             fifty_two_week_low: 0.0,
+            quote_time_ms: None,
+            provider_type: None,
         }
     }
 
@@ -184,7 +215,7 @@ mod tests {
 
         let got = cache.get("AAPL").expect("cached entry");
         assert_eq!(got.symbol, "AAPL");
-        assert_eq!(got.last_price, 150.0);
+        assert_eq!(got.last_price, Some(150.0));
     }
 
     #[test]
@@ -201,8 +232,8 @@ mod tests {
             ("GOOG".to_string(), sample_quote("GOOG", 2800.0)),
         ]));
 
-        assert_eq!(cache.get("AAPL").unwrap().last_price, 150.0);
-        assert_eq!(cache.get("GOOG").unwrap().last_price, 2800.0);
+        assert_eq!(cache.get("AAPL").unwrap().last_price, Some(150.0));
+        assert_eq!(cache.get("GOOG").unwrap().last_price, Some(2800.0));
     }
 
     #[test]
@@ -227,6 +258,23 @@ mod tests {
     }
 
     #[test]
+    fn invalid_cache_times_cannot_claim_freshness() {
+        let now = 1_789_387_200;
+        for timestamp in [0, -1, i64::MAX, now + 301, now - 121] {
+            let entry = CacheEntry {
+                data: sample_quote("BAD", 100.0),
+                timestamp,
+            };
+            assert!(!entry_is_fresh_at(&entry, now), "{timestamp}");
+        }
+        let entry = CacheEntry {
+            data: sample_quote("GOOD", 100.0),
+            timestamp: now - 120,
+        };
+        assert!(entry_is_fresh_at(&entry, now));
+    }
+
+    #[test]
     fn cache_persistence() {
         let dir = tempdir().expect("tempdir");
         let path = dir.path().join("cache.json");
@@ -239,6 +287,58 @@ mod tests {
         second.load();
 
         let got = second.get("AAPL").expect("reloaded entry");
-        assert_eq!(got.last_price, 150.0);
+        assert_eq!(got.last_price, Some(150.0));
+    }
+
+    #[test]
+    fn legacy_json_without_metadata_deserializes_safely() {
+        let raw = r#"{
+            "symbol": "AAPL",
+            "lastPrice": 150.0,
+            "previousClose": 0.0,
+            "currency": "USD",
+            "open": 0.0,
+            "dayHigh": 0.0,
+            "dayLow": 0.0,
+            "volume": 0,
+            "marketCap": 0,
+            "fiftyTwoWeekHigh": 0.0,
+            "fiftyTwoWeekLow": 0.0
+        }"#;
+
+        let cached: QuoteCache = serde_json::from_str(raw).expect("legacy cache entry");
+        assert_eq!(cached.last_price, Some(150.0));
+        assert_eq!(cached.quote_time_ms, None);
+        assert_eq!(cached.provider_type, None);
+    }
+
+    #[test]
+    fn metadata_survives_cache_round_trip() {
+        let quote = QuoteCache {
+            quote_time_ms: Some(1_789_380_000_000),
+            provider_type: Some("ETF".to_string()),
+            ..sample_quote("AAPL", 150.0)
+        };
+
+        let raw = serde_json::to_string(&quote).expect("serialize");
+        assert!(raw.contains("quoteTimeMs"));
+        assert!(raw.contains("ETF"));
+
+        let restored: QuoteCache = serde_json::from_str(&raw).expect("deserialize");
+        assert_eq!(restored, quote);
+    }
+
+    #[test]
+    fn null_prices_round_trip_as_missing() {
+        let quote = QuoteCache {
+            last_price: None,
+            previous_close: None,
+            ..sample_quote("BROKEN", 1.0)
+        };
+
+        let raw = serde_json::to_string(&quote).expect("serialize");
+        let restored: QuoteCache = serde_json::from_str(&raw).expect("deserialize");
+        assert_eq!(restored.last_price, None);
+        assert_eq!(restored.previous_close, None);
     }
 }

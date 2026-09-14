@@ -5,6 +5,7 @@ use chrono::{DateTime, Local};
 use serde::Deserialize;
 
 use crate::finance::Client;
+use crate::quote_policy::{self, PortfolioSummary, PositionEvaluation};
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct PortfolioItem {
@@ -49,24 +50,26 @@ pub struct FetchInfo {
 pub struct EnrichedItem {
     pub ticker: String,
     pub shares: f64,
-    pub price: f64,
-    pub previous_close: f64,
-    pub pnl: f64,
     pub currency: String,
+    pub from_cache: bool,
+    /// Policy verdict for this position: valuation, session eligibility, and
+    /// the raw comparison with its period.
+    pub evaluation: PositionEvaluation,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CurrencyGroup {
     pub currency: String,
     pub items: Vec<EnrichedItem>,
-    pub total_value: f64,
-    pub total_pnl: f64,
+    /// Policy aggregate for this group only. Unlike currencies are never
+    /// summed, so each group carries its own totals.
+    pub summary: PortfolioSummary,
 }
 
 #[derive(Debug, Default)]
 pub struct Portfolio {
     items: Vec<EnrichedItem>,
-    total_value: f64,
+    summary: PortfolioSummary,
     skipped: Vec<String>,
     fetch_info: FetchInfo,
 }
@@ -89,10 +92,10 @@ impl Portfolio {
             .map(|item| item.ticker.clone())
             .collect::<Vec<_>>();
         let quotes = Client::new().get_quotes(&symbols).await?;
+        let now_ms = Local::now().timestamp_millis();
 
         self.items = Vec::with_capacity(items.len());
         self.skipped.clear();
-        self.total_value = 0.0;
         self.fetch_info = FetchInfo {
             all_from_cache: true,
             ..FetchInfo::default()
@@ -104,26 +107,38 @@ impl Portfolio {
                 continue;
             };
 
-            self.track_fetch_info(quote.fetched_at, quote.from_cache);
+            if let Some(fetched_at) = quote.fetched_at {
+                self.track_fetch_info(fetched_at, quote.from_cache);
+            }
 
-            let price = item.shares * quote.last_price;
-            let previous_close = item.shares * quote.previous_close;
-            let pnl = if previous_close > 0.0 {
-                ((price / previous_close) - 1.0) * 100.0
-            } else {
-                0.0
-            };
+            let mut evaluation =
+                quote_policy::evaluate_position(quote.position_quote(item.shares), now_ms);
+            // Unknown monetary units cannot be summed into a currency subtotal.
+            if quote.currency.trim().is_empty() {
+                evaluation.value = None;
+                evaluation.session_date = None;
+                evaluation.session_eligible = false;
+                evaluation.session_amount = None;
+                evaluation.session_percent = None;
+                evaluation.comparison_amount = None;
+                evaluation.quality = quote_policy::QuoteQuality::Incomplete;
+            }
 
             self.items.push(EnrichedItem {
                 ticker: item.ticker,
                 shares: item.shares,
-                price,
-                previous_close,
-                pnl,
                 currency: quote.currency.clone(),
+                from_cache: quote.from_cache,
+                evaluation,
             });
-            self.total_value += price;
         }
+
+        let evaluations: Vec<PositionEvaluation> = self
+            .items
+            .iter()
+            .map(|item| item.evaluation.clone())
+            .collect();
+        self.summary = quote_policy::aggregate(&evaluations, self.skipped.len());
 
         Ok(())
     }
@@ -151,22 +166,18 @@ impl Portfolio {
         &self.items
     }
 
-    pub fn total_value(&self) -> f64 {
-        self.total_value
+    pub fn summary(&self) -> &PortfolioSummary {
+        &self.summary
     }
 
-    pub fn total_pnl(&self) -> f64 {
-        let total_previous_close = self
-            .items
+    /// Tickers whose quote had no usable price. They keep their rows (marked
+    /// unknown) instead of disappearing silently.
+    pub fn unpriced(&self) -> Vec<&str> {
+        self.items
             .iter()
-            .map(|item| item.previous_close)
-            .sum::<f64>();
-
-        if total_previous_close == 0.0 {
-            0.0
-        } else {
-            ((self.total_value / total_previous_close) - 1.0) * 100.0
-        }
+            .filter(|item| item.evaluation.value.is_none())
+            .map(|item| item.ticker.as_str())
+            .collect()
     }
 
     pub fn currency_groups(&self) -> Vec<CurrencyGroup> {
@@ -182,26 +193,23 @@ impl Portfolio {
                 groups.push(CurrencyGroup {
                     currency: item.currency.clone(),
                     items: Vec::new(),
-                    total_value: 0.0,
-                    total_pnl: 0.0,
+                    summary: PortfolioSummary::default(),
                 });
                 index
             };
 
-            let group = &mut groups[index];
-            group.total_value += item.price;
-            group.items.push(item.clone());
+            groups[index].items.push(item.clone());
         }
 
         for group in &mut groups {
-            let total_previous_close = group
+            let evaluations: Vec<PositionEvaluation> = group
                 .items
                 .iter()
-                .map(|item| item.previous_close)
-                .sum::<f64>();
-            if total_previous_close > 0.0 {
-                group.total_pnl = ((group.total_value / total_previous_close) - 1.0) * 100.0;
-            }
+                .map(|item| item.evaluation.clone())
+                .collect();
+            // The currency of failed quotes is unknown: no group may claim
+            // complete coverage until those requested positions are priced.
+            group.summary = quote_policy::aggregate(&evaluations, self.skipped.len());
         }
 
         groups
@@ -236,6 +244,7 @@ impl Portfolio {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::quote_policy::SessionStatus;
     use tempfile::tempdir;
 
     fn create_temp_file(content: &str) -> std::path::PathBuf {
@@ -243,6 +252,49 @@ mod tests {
         let path = dir.keep().join("portfolio.json");
         fs::write(&path, content).expect("write portfolio");
         path
+    }
+
+    #[allow(clippy::too_many_arguments)] // mirrors the policy input tuple used by fixtures
+    fn enriched(
+        ticker: &str,
+        shares: f64,
+        currency: &str,
+        price: Option<f64>,
+        previous_close: Option<f64>,
+        provider_type: Option<&str>,
+        quote_time: Option<i64>,
+        fetched_at: Option<i64>,
+        now_ms: i64,
+    ) -> EnrichedItem {
+        EnrichedItem {
+            ticker: ticker.to_string(),
+            shares,
+            currency: currency.to_string(),
+            from_cache: false,
+            evaluation: quote_policy::evaluate_position(
+                quote_policy::PositionQuote {
+                    shares,
+                    price,
+                    previous_close,
+                    provider_type,
+                    quote_time,
+                    fetched_at,
+                },
+                now_ms,
+            ),
+        }
+    }
+
+    fn portfolio_with(items: Vec<EnrichedItem>, skipped: Vec<String>) -> Portfolio {
+        let evaluations: Vec<PositionEvaluation> =
+            items.iter().map(|item| item.evaluation.clone()).collect();
+        let summary = quote_policy::aggregate(&evaluations, skipped.len());
+        Portfolio {
+            items,
+            summary,
+            skipped,
+            fetch_info: FetchInfo::default(),
+        }
     }
 
     #[test]
@@ -299,5 +351,131 @@ mod tests {
         let path = create_temp_file("[]");
         let items = load_portfolio(path).expect("portfolio");
         assert!(items.is_empty());
+    }
+
+    #[test]
+    fn currency_groups_keep_currencies_and_sessions_separate() {
+        let now = 1_789_387_200_000i64;
+        let portfolio = portfolio_with(
+            vec![
+                enriched(
+                    "REGULAR",
+                    10.0,
+                    "EUR",
+                    Some(100.0),
+                    Some(95.0),
+                    Some("ETF"),
+                    Some(now - 7_200_000),
+                    Some(now),
+                    now,
+                ),
+                enriched(
+                    "PERIODIC",
+                    100.0,
+                    "EUR",
+                    Some(21.0),
+                    Some(20.0),
+                    Some("MUTUALFUND"),
+                    Some(now - 7_200_000),
+                    Some(now),
+                    now,
+                ),
+                enriched(
+                    "STOCK",
+                    2.0,
+                    "USD",
+                    Some(50.0),
+                    Some(48.0),
+                    Some("EQUITY"),
+                    Some(now - 7_200_000),
+                    Some(now),
+                    now,
+                ),
+            ],
+            Vec::new(),
+        );
+
+        let groups = portfolio.currency_groups();
+        assert_eq!(groups.len(), 2);
+
+        assert_eq!(groups[0].currency, "EUR");
+        assert!((groups[0].summary.total_value - 3100.0).abs() < 1e-9);
+        assert_eq!(groups[0].summary.session.status, SessionStatus::Partial);
+        assert!((groups[0].summary.session.amount.unwrap() - 50.0).abs() < 1e-9);
+        assert_eq!(groups[0].summary.session.included_positions, 1);
+        assert_eq!(groups[0].summary.session.total_positions, 2);
+
+        assert_eq!(groups[1].currency, "USD");
+        assert!((groups[1].summary.total_value - 100.0).abs() < 1e-9);
+        assert_eq!(groups[1].summary.session.status, SessionStatus::Complete);
+        assert!((groups[1].summary.session.amount.unwrap() - 4.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn group_coverage_is_unknown_with_unpriced_position() {
+        let now = 1_789_387_200_000i64;
+        let portfolio = portfolio_with(
+            vec![
+                enriched(
+                    "REGULAR",
+                    10.0,
+                    "EUR",
+                    Some(100.0),
+                    Some(95.0),
+                    Some("ETF"),
+                    Some(now - 7_200_000),
+                    Some(now),
+                    now,
+                ),
+                enriched(
+                    "UNPRICED",
+                    100.0,
+                    "EUR",
+                    None,
+                    Some(20.0),
+                    Some("ETF"),
+                    Some(now - 7_200_000),
+                    Some(now),
+                    now,
+                ),
+            ],
+            Vec::new(),
+        );
+
+        assert_eq!(portfolio.unpriced(), vec!["UNPRICED"]);
+
+        let groups = portfolio.currency_groups();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].summary.coverage_percent, None);
+        assert_eq!(groups[0].summary.session.status, SessionStatus::Partial);
+    }
+
+    #[test]
+    fn missing_quote_blocks_complete_coverage_across_modes() {
+        let now = 1_789_387_200_000i64;
+        let portfolio = portfolio_with(
+            vec![enriched(
+                "REGULAR",
+                10.0,
+                "EUR",
+                Some(100.0),
+                Some(95.0),
+                Some("ETF"),
+                Some(now - 7_200_000),
+                Some(now),
+                now,
+            )],
+            vec!["GONE".to_string()],
+        );
+
+        let summary = portfolio.summary();
+        assert_eq!(summary.session.status, SessionStatus::Partial);
+        assert_eq!(summary.session.total_positions, 2);
+        assert_eq!(summary.coverage_percent, None);
+        for group in portfolio.currency_groups() {
+            assert_eq!(group.summary.session.status, SessionStatus::Partial);
+            assert_eq!(group.summary.session.total_positions, 2);
+            assert_eq!(group.summary.coverage_percent, None);
+        }
     }
 }

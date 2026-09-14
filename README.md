@@ -8,7 +8,7 @@ A CLI tool for tracking investment portfolios with real-time Yahoo Finance data.
 ## Features
 
 - Real-time quotes from Yahoo Finance API
-- Portfolio tracking with daily P&L calculations
+- Portfolio tracking with session P&L and coverage reporting
 - Multi-currency support with grouped subtotals
 - Concurrent data fetching for fast updates
 - File-based caching with 2-minute TTL
@@ -78,6 +78,18 @@ fincli portfolio --total
 # Custom portfolio file
 fincli portfolio --file ~/my_portfolio.json
 ```
+
+The portfolio output reports two distinct figures:
+
+- **Total value** prices every position that has a valid last known price.
+- **Session P&L** is the move from the previous close on the latest common
+  quote date, computed only over comparable, fresh positions, with partial
+  coverage and the reference UTC session date shown next to it.
+
+Funds and stale quotes are listed as valuation comparisons with their own
+source date instead of being passed off as session returns, and anything
+unknown is shown as `N/A` rather than a fabricated `0`. See
+[docs/quote-policy.md](docs/quote-policy.md) for the full policy.
 
 ## Configuration
 

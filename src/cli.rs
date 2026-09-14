@@ -94,18 +94,21 @@ async fn run_portfolio(show_total_only: bool, file: Option<PathBuf>) -> Result<(
         eprintln!("{}", display::render_warning(&message));
     }
 
+    let unpriced = portfolio.unpriced();
+    if !unpriced.is_empty() {
+        let message = format!(
+            "Warning: no valid valuation/currency for: {}",
+            unpriced.join(", ")
+        );
+        eprintln!("{}", display::render_warning(&message));
+    }
+
     if portfolio.is_single_currency() {
         let currency = portfolio.currency().unwrap_or("");
         if show_total_only {
-            display::print_total_only(portfolio.total_value(), portfolio.total_pnl(), currency);
+            display::print_total_only(portfolio.summary(), currency, portfolio.items());
         } else {
-            display::print_portfolio_table(
-                portfolio.items(),
-                true,
-                portfolio.total_value(),
-                portfolio.total_pnl(),
-                currency,
-            );
+            display::print_portfolio_table(portfolio.items(), portfolio.summary(), currency);
         }
     } else {
         let groups = portfolio.currency_groups();
@@ -123,8 +126,8 @@ async fn run_portfolio(show_total_only: bool, file: Option<PathBuf>) -> Result<(
 fn print_fast_info(symbol: &str, ticker: &Ticker) {
     let data = ticker.data();
     let rows = [
-        row("lastPrice", AttributeValue::Float(data.last_price)),
-        row("previousClose", AttributeValue::Float(data.previous_close)),
+        row_optional("lastPrice", data.last_price),
+        row_optional("previousClose", data.previous_close),
         row("open", AttributeValue::Float(data.open)),
         row("dayHigh", AttributeValue::Float(data.day_high)),
         row("dayLow", AttributeValue::Float(data.day_low)),
@@ -137,8 +140,8 @@ fn print_fast_info(symbol: &str, ticker: &Ticker) {
 fn print_full_info(symbol: &str, ticker: &Ticker) {
     let data = ticker.data();
     let rows = [
-        row("lastPrice", AttributeValue::Float(data.last_price)),
-        row("previousClose", AttributeValue::Float(data.previous_close)),
+        row_optional("lastPrice", data.last_price),
+        row_optional("previousClose", data.previous_close),
         row("open", AttributeValue::Float(data.open)),
         row("dayHigh", AttributeValue::Float(data.day_high)),
         row("dayLow", AttributeValue::Float(data.day_low)),
@@ -151,6 +154,22 @@ fn print_full_info(symbol: &str, ticker: &Ticker) {
         row(
             "fiftyTwoWeekLow",
             AttributeValue::Float(data.fifty_two_week_low),
+        ),
+        row(
+            "quoteType",
+            AttributeValue::Text(
+                data.provider_type
+                    .clone()
+                    .unwrap_or_else(|| "N/A".to_string()),
+            ),
+        ),
+        row(
+            "quoteTime",
+            AttributeValue::Text(
+                data.quote_time_ms
+                    .map(crate::finance::format_quote_time)
+                    .unwrap_or_else(|| "N/A".to_string()),
+            ),
         ),
         row("currency", AttributeValue::Text(data.currency.clone())),
     ];
@@ -169,6 +188,15 @@ fn row(attribute: &str, value: AttributeValue) -> TickerInfoRow {
     TickerInfoRow {
         attribute: attribute.to_string(),
         value: format_value(value),
+    }
+}
+
+fn row_optional(attribute: &str, value: Option<f64>) -> TickerInfoRow {
+    TickerInfoRow {
+        attribute: attribute.to_string(),
+        value: value
+            .map(|value| display::format_with_thousands(value, 2))
+            .unwrap_or_else(|| "N/A".to_string()),
     }
 }
 

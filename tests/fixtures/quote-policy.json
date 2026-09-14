@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "now": 1789387200000,
+  "cases": [
+    {
+      "name": "ordinary session",
+      "quotes": [{"symbol":"REGULAR","amount":10,"price":100,"previousClose":95,"quoteType":"ETF","quoteTime":1789380000000,"fetchedAt":1789387200000}],
+      "expected": {"value":1000,"pnl":50,"pnlPercent":5.263157894736842,"coveragePercent":100,"status":"complete"}
+    },
+    {
+      "name": "missing previous price is unavailable",
+      "quotes": [{"symbol":"INCOMPLETE","amount":100,"price":20,"previousClose":null,"quoteType":"ETF","quoteTime":1789380000000,"fetchedAt":1789387200000}],
+      "expected": {"value":2000,"pnl":null,"pnlPercent":null,"coveragePercent":0,"status":"unavailable"}
+    },
+    {
+      "name": "mixed session and valuation use matched numerator and denominator",
+      "quotes": [
+        {"symbol":"REGULAR","amount":10,"price":100,"previousClose":95,"quoteType":"ETF","quoteTime":1789380000000,"fetchedAt":1789387200000},
+        {"symbol":"PERIODIC","amount":100,"price":21,"previousClose":20,"quoteType":"MUTUALFUND","quoteTime":1788177600000,"fetchedAt":1789387200000}
+      ],
+      "expected": {"value":3100,"pnl":50,"pnlPercent":5.263157894736842,"coveragePercent":32.25806451612903,"status":"partial"}
+    },
+    {
+      "name": "all valuations never become session returns even on publication day",
+      "quotes": [{"symbol":"PERIODIC","amount":100,"price":21,"previousClose":20,"quoteType":"MUTUALFUND","quoteTime":1789380000000,"fetchedAt":1789387200000}],
+      "expected": {"value":2100,"pnl":null,"pnlPercent":null,"coveragePercent":0,"status":"unavailable"}
+    },
+    {
+      "name": "unknown instrument has no assumed session return",
+      "quotes": [{"symbol":"UNKNOWN","amount":10,"price":100,"previousClose":95,"quoteTime":1789380000000,"fetchedAt":1789387200000}],
+      "expected": {"value":1000,"pnl":null,"pnlPercent":null,"coveragePercent":0,"status":"unavailable"}
+    },
+    {
+      "name": "unchanged fresh price is a valid zero return",
+      "quotes": [{"symbol":"FLAT","amount":100,"price":20,"previousClose":20,"quoteType":"EQUITY","quoteTime":1789380000000,"fetchedAt":1789387200000}],
+      "expected": {"value":2000,"pnl":0,"pnlPercent":0,"coveragePercent":100,"status":"complete"}
+    },
+    {
+      "name": "successful fetch cannot freshen a dated quote",
+      "quotes": [{"symbol":"DATED","amount":10,"price":100,"previousClose":95,"quoteType":"ETF","quoteTime":1788177600000,"fetchedAt":1789387200000}],
+      "expected": {"value":1000,"pnl":null,"pnlPercent":null,"coveragePercent":0,"status":"unavailable"}
+    },
+    {
+      "name": "weekend retains the last observed Friday session",
+      "now":1789300800000,
+      "quotes": [{"symbol":"FRIDAY","amount":10,"price":100,"previousClose":95,"quoteType":"ETF","quoteTime":1789128000000,"fetchedAt":1789300800000}],
+      "expected": {"value":1000,"pnl":50,"pnlPercent":5.263157894736842,"coveragePercent":100,"status":"complete"}
+    },
+    {
+      "name": "different session dates are not combined",
+      "quotes": [
+        {"symbol":"CURRENT","amount":10,"price":100,"previousClose":95,"quoteType":"ETF","quoteTime":1789380000000,"fetchedAt":1789387200000},
+        {"symbol":"OLDER","amount":10,"price":100,"previousClose":90,"quoteType":"ETF","quoteTime":1789128000000,"fetchedAt":1789387200000}
+      ],
+      "expected": {"value":2000,"pnl":50,"pnlPercent":5.263157894736842,"coveragePercent":50,"status":"partial"}
+    },
+    {
+      "name": "fresh cache is distinct from quote freshness",
+      "quotes": [{"symbol":"CACHED","amount":10,"price":100,"previousClose":95,"quoteType":"ETF","quoteTime":1789380000000,"fetchedAt":1789387140000,"fromCache":true}],
+      "expected": {"value":1000,"pnl":50,"pnlPercent":5.263157894736842,"coveragePercent":100,"status":"complete"}
+    },
+    {
+      "name": "old cache retains value but cannot claim a current session return",
+      "quotes": [{"symbol":"CACHED","amount":10,"price":100,"previousClose":95,"quoteType":"ETF","quoteTime":1789380000000,"fetchedAt":1789380000000,"fromCache":true}],
+      "expected": {"value":1000,"pnl":null,"pnlPercent":null,"coveragePercent":0,"status":"unavailable"}
+    },
+    {
+      "name": "legacy cache with missing quote metadata fails closed",
+      "quotes": [{"symbol":"LEGACY","amount":10,"price":100,"previousClose":95,"fetchedAt":1789387200000,"fromCache":true}],
+      "expected": {"value":1000,"pnl":null,"pnlPercent":null,"coveragePercent":0,"status":"unavailable"}
+    },
+    {
+      "name": "missing valuation makes percentage coverage unknown",
+      "quotes": [
+        {"symbol":"REGULAR","amount":10,"price":100,"previousClose":95,"quoteType":"ETF","quoteTime":1789380000000,"fetchedAt":1789387200000},
+        {"symbol":"UNPRICED","amount":100,"price":null,"previousClose":20,"quoteType":"ETF","quoteTime":1789380000000,"fetchedAt":1789387200000}
+      ],
+      "expected": {"value":1000,"pnl":50,"pnlPercent":5.263157894736842,"coveragePercent":null,"status":"partial"}
+    },
+    {
+      "name": "empty portfolio has no invented return",
+      "quotes": [],
+      "expected": {"value":0,"pnl":null,"pnlPercent":null,"coveragePercent":null,"status":"unavailable"}
+    }
+  ]
+}
