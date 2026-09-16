@@ -41,6 +41,8 @@ enum Commands {
     Portfolio {
         #[arg(short = 't', long = "total", help = "Show only total portfolio value")]
         total: bool,
+        #[arg(long, help = "Show quote dates, coverage and comparison details")]
+        details: bool,
         #[arg(
             short = 'f',
             long = "file",
@@ -60,7 +62,11 @@ pub async fn run() -> Result<()> {
             info,
             attribute,
         } => run_ticker(&symbol, info, attribute.as_deref()).await,
-        Commands::Portfolio { total, file } => run_portfolio(total, file).await,
+        Commands::Portfolio {
+            total,
+            details,
+            file,
+        } => run_portfolio(total, details, file).await,
     }
 }
 
@@ -82,7 +88,7 @@ async fn run_ticker(symbol: &str, show_info: bool, attribute: Option<&str>) -> R
     Ok(())
 }
 
-async fn run_portfolio(show_total_only: bool, file: Option<PathBuf>) -> Result<()> {
+async fn run_portfolio(show_total_only: bool, details: bool, file: Option<PathBuf>) -> Result<()> {
     let file = file.unwrap_or_else(default_portfolio_path);
     let portfolio = Portfolio::new(file).await?;
 
@@ -106,20 +112,25 @@ async fn run_portfolio(show_total_only: bool, file: Option<PathBuf>) -> Result<(
     if portfolio.is_single_currency() {
         let currency = portfolio.currency().unwrap_or("");
         if show_total_only {
-            display::print_total_only(portfolio.summary(), currency, portfolio.items());
+            display::print_total_only(portfolio.summary(), currency, portfolio.items(), details);
         } else {
-            display::print_portfolio_table(portfolio.items(), portfolio.summary(), currency);
+            display::print_portfolio_table(
+                portfolio.items(),
+                portfolio.summary(),
+                currency,
+                details,
+            );
         }
     } else {
         let groups = portfolio.currency_groups();
         if show_total_only {
-            display::print_multi_currency_total_only(&groups);
+            display::print_multi_currency_total_only(&groups, details);
         } else {
-            display::print_multi_currency_portfolio(&groups);
+            display::print_multi_currency_portfolio(&groups, details);
         }
     }
 
-    display::print_cache_footer(portfolio.fetch_info());
+    display::print_cache_footer(portfolio.fetch_info(), details);
     Ok(())
 }
 

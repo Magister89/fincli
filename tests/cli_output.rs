@@ -61,7 +61,7 @@ fn sandbox(include_usd: bool, missing_price: bool) -> TempDir {
     dir
 }
 
-fn run(dir: &TempDir, total: bool) -> String {
+fn run(dir: &TempDir, total: bool, details: bool) -> String {
     let mut command = Command::new(env!("CARGO_BIN_EXE_fincli"));
     command
         .env("HOME", dir.path())
@@ -86,6 +86,9 @@ fn run(dir: &TempDir, total: bool) -> String {
         .arg(dir.path().join("portfolio.json"));
     if total {
         command.arg("--total");
+    }
+    if details {
+        command.arg("--details");
     }
     let output = command.output().expect("run test binary");
     assert!(
@@ -113,11 +116,103 @@ fn run(dir: &TempDir, total: bool) -> String {
         .collect()
 }
 
+fn compact_lines(stdout: &str) -> Vec<String> {
+    for text in [
+        "Session P&L",
+        "Coverage:",
+        "quoted",
+        "period",
+        "comparison",
+        "Fetched:",
+        "ref ",
+    ] {
+        assert!(!stdout.contains(text), "unexpected {text}: {stdout}");
+    }
+    stdout
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
+        .collect()
+}
+
 #[test]
-fn real_cli_keeps_missing_baseline_context_and_dates_in_both_modes() {
+fn real_cli_defaults_to_the_original_compact_table() {
+    let home = sandbox(false, false);
+    let stdout = run(&home, false, false);
+    let lines = compact_lines(&stdout);
+    assert_eq!(lines.len(), 8, "{stdout}");
+    assert_eq!(
+        &lines[..7],
+        [
+            "Ticker Qty Value P&L",
+            "──────────── ──────── ────────────────── ────────────",
+            "REGULAR 10 1,000.00 EUR ▲ 5.26%",
+            "OLDER 10 1,000.00 EUR N/A",
+            "PERIODIC 100 2,100.00 EUR N/A",
+            "──────────── ──────── ────────────────── ────────────",
+            "Total 4,100.00 EUR ▲ 5.26%",
+        ]
+    );
+    assert!(lines[7].starts_with("Data from cache ("), "{stdout}");
+}
+
+#[test]
+fn real_cli_total_defaults_to_only_the_summary_and_cache_footer() {
+    let home = sandbox(false, false);
+    let stdout = run(&home, true, false);
+    let lines = compact_lines(&stdout);
+    assert_eq!(lines.len(), 4, "{stdout}");
+    assert_eq!(
+        &lines[..3],
+        [
+            "Total Value P&L",
+            "──────────────── ────────────",
+            "4,100.00 EUR ▲ 5.26%",
+        ]
+    );
+    assert!(lines[3].starts_with("Data from cache ("), "{stdout}");
+}
+
+#[test]
+fn real_multicurrency_cli_defaults_to_compact_priced_subtotals() {
+    let home = sandbox(true, false);
+    for total in [false, true] {
+        let stdout = run(&home, total, false);
+        let lines = compact_lines(&stdout);
+        if total {
+            assert_eq!(lines.len(), 5, "{stdout}");
+            assert_eq!(
+                &lines[..4],
+                [
+                    "Priced subtotal P&L",
+                    "──────────────── ────────────",
+                    "4,100.00 EUR ▲ 5.26%",
+                    "200.00 USD ▲ 5.26%",
+                ]
+            );
+        } else {
+            assert_eq!(lines.len(), 13, "{stdout}");
+            let subtotals: Vec<_> = lines
+                .iter()
+                .filter(|line| line.starts_with("Subtotal"))
+                .map(String::as_str)
+                .collect();
+            assert_eq!(
+                subtotals,
+                [
+                    "Subtotal 4,100.00 EUR ▲ 5.26%",
+                    "Subtotal 200.00 USD ▲ 5.26%"
+                ]
+            );
+        }
+    }
+}
+
+#[test]
+fn real_cli_details_keeps_missing_baseline_context_and_dates_in_both_modes() {
     let home = sandbox(false, false);
     for total in [false, true] {
-        let stdout = run(&home, total);
+        let stdout = run(&home, total, true);
         for text in [
             "PERIODIC",
             "N/A comparison",
@@ -146,10 +241,10 @@ fn real_cli_keeps_missing_baseline_context_and_dates_in_both_modes() {
 }
 
 #[test]
-fn real_multicurrency_cli_does_not_lose_failed_quote_coverage() {
+fn real_multicurrency_cli_details_does_not_lose_failed_quote_coverage() {
     let home = sandbox(true, false);
     for total in [false, true] {
-        let stdout = run(&home, total);
+        let stdout = run(&home, total, true);
         assert!(stdout.contains("EUR Coverage: N/A"), "{stdout}");
         assert!(stdout.contains("USD Coverage: N/A"), "{stdout}");
         assert!(!stdout.contains("100.0%"), "{stdout}");
@@ -165,9 +260,16 @@ fn real_multicurrency_cli_does_not_lose_failed_quote_coverage() {
 fn real_cli_does_not_display_an_all_unpriced_portfolio_as_zero() {
     let home = sandbox(false, true);
     for total in [false, true] {
-        let stdout = run(&home, total);
-        assert!(stdout.contains("N/A"), "{stdout}");
-        assert!(!stdout.contains("0.00 EUR"), "{stdout}");
-        assert!(stdout.contains("unavailable"), "{stdout}");
+        for details in [false, true] {
+            let stdout = run(&home, total, details);
+            assert!(stdout.contains("N/A"), "{stdout}");
+            assert!(!stdout.contains("0.00 EUR"), "{stdout}");
+            if details {
+                assert!(stdout.contains("unavailable"), "{stdout}");
+            } else {
+                let lines = compact_lines(&stdout);
+                assert_eq!(lines.len(), if total { 4 } else { 8 }, "{stdout}");
+            }
+        }
     }
 }

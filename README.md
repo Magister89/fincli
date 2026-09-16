@@ -8,7 +8,7 @@ A CLI tool for tracking investment portfolios with real-time Yahoo Finance data.
 ## Features
 
 - Real-time quotes from Yahoo Finance API
-- Portfolio tracking with session P&L and coverage reporting
+- Compact portfolio tracking with session P&L and optional quote details
 - Multi-currency support with grouped subtotals
 - Concurrent data fetching for fast updates
 - File-based caching with 2-minute TTL
@@ -75,20 +75,27 @@ fincli portfolio
 # Show only total value
 fincli portfolio --total
 
+# Show quote dates, coverage and separate valuation comparisons
+fincli portfolio --details
+fincli portfolio --total --details
+
 # Custom portfolio file
 fincli portfolio --file ~/my_portfolio.json
 ```
 
-The portfolio output reports two distinct figures:
+By default, the original compact table shows `Ticker`, `Qty`, `Value`, `P&L`
+and a total, with one row per position and a short cache/update footer.
+`--total` shows only the summary and footer. The calculations remain:
 
 - **Total value** prices every position that has a valid last known price.
-- **Session P&L** is the move from the previous close on the latest common
-  quote date, computed only over comparable, fresh positions, with partial
-  coverage and the reference UTC session date shown next to it.
+- **P&L** is session P&L: the move from the previous close on the latest
+  reference quote date, computed only over comparable, fresh positions.
+  It can cover fewer positions than the total valuation.
 
-Funds and stale quotes are listed as valuation comparisons with their own
-source date instead of being passed off as session returns, and anything
-unknown is shown as `N/A` rather than a fabricated `0`. See
+Funds, off-reference quotes and unknown comparisons show `N/A` in the P&L
+column, never a fabricated `0`. Use `--details` to see the reference UTC date,
+coverage, quote metadata and separate valuation-period comparisons. The
+footer describes fetch/cache timing, not the source quote date. See
 [docs/quote-policy.md](docs/quote-policy.md) for the full policy.
 
 ## Configuration

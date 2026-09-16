@@ -88,13 +88,18 @@ pub fn format_quantity(value: f64) -> String {
         .to_string()
 }
 
-pub fn print_portfolio_table(items: &[EnrichedItem], summary: &PortfolioSummary, currency: &str) {
-    print_header();
+pub fn print_portfolio_table(
+    items: &[EnrichedItem],
+    summary: &PortfolioSummary,
+    currency: &str,
+    details: bool,
+) {
+    print_header(details);
     let separator = separator();
     println!("{}", dim(&separator));
 
     for item in items {
-        print_item(item, summary.session.reference_date);
+        print_item(item, summary.session.reference_date, details);
     }
 
     println!("{}", dim(&separator));
@@ -107,45 +112,53 @@ pub fn print_portfolio_table(items: &[EnrichedItem], summary: &PortfolioSummary,
         summary,
         currency,
     );
-    print_summary_lines(summary, currency, "");
-    print_valuation_comparisons(items, summary.session.reference_date);
+    if details {
+        print_summary_lines(summary, currency, "");
+        print_valuation_comparisons(items, summary.session.reference_date);
+    }
 }
 
-pub fn print_multi_currency_portfolio(groups: &[CurrencyGroup]) {
-    print_header();
+pub fn print_multi_currency_portfolio(groups: &[CurrencyGroup], details: bool) {
+    print_header(details);
     let separator = separator();
     println!("{}", dim(&separator));
 
     for (index, group) in groups.iter().enumerate() {
         for item in &group.items {
-            print_item(item, group.summary.session.reference_date);
+            print_item(item, group.summary.session.reference_date, details);
         }
 
         println!("{}", dim(&separator));
         print_total("Subtotal", &group.summary, &group.currency);
-        print_summary_lines(
-            &group.summary,
-            &group.currency,
-            &format!("{} ", group.currency),
-        );
-
-        print_valuation_comparisons(&group.items, group.summary.session.reference_date);
+        if details {
+            print_summary_lines(
+                &group.summary,
+                &group.currency,
+                &format!("{} ", group.currency),
+            );
+            print_valuation_comparisons(&group.items, group.summary.session.reference_date);
+        }
 
         if index < groups.len() - 1 {
             println!();
-            print_header();
+            print_header(details);
             println!("{}", dim(&separator));
         }
     }
 }
 
-pub fn print_total_only(summary: &PortfolioSummary, currency: &str, items: &[EnrichedItem]) {
+pub fn print_total_only(
+    summary: &PortfolioSummary,
+    currency: &str,
+    items: &[EnrichedItem],
+    details: bool,
+) {
     let label = if summary.unvalued_positions > 0 {
         "Priced subtotal"
     } else {
         "Total Value"
     };
-    let header = format!("{label:<16}  {:<12}", "Session P&L");
+    let header = format!("{label:<16}  {:<12}", pnl_heading(details));
     println!("{}", header_style(&header));
 
     let separator = format!("{:<16}  {:<12}", "────────────────", "────────────");
@@ -155,11 +168,13 @@ pub fn print_total_only(summary: &PortfolioSummary, currency: &str, items: &[Enr
     let value = format!("{:>12} {currency}", formatted_value);
     println!("{}  {}", bold(&value), format_pnl(summary.session.percent));
 
-    print_summary_lines(summary, currency, "");
-    print_valuation_comparisons(items, summary.session.reference_date);
+    if details {
+        print_summary_lines(summary, currency, "");
+        print_valuation_comparisons(items, summary.session.reference_date);
+    }
 }
 
-pub fn print_multi_currency_total_only(groups: &[CurrencyGroup]) {
+pub fn print_multi_currency_total_only(groups: &[CurrencyGroup], details: bool) {
     let label = if groups
         .iter()
         .any(|group| group.summary.unvalued_positions > 0)
@@ -168,7 +183,7 @@ pub fn print_multi_currency_total_only(groups: &[CurrencyGroup]) {
     } else {
         "Total Value"
     };
-    let header = format!("{label:<16}  {:<12}", "Session P&L");
+    let header = format!("{label:<16}  {:<12}", pnl_heading(details));
     println!("{}", header_style(&header));
 
     let separator = format!("{:<16}  {:<12}", "────────────────", "────────────");
@@ -184,15 +199,17 @@ pub fn print_multi_currency_total_only(groups: &[CurrencyGroup]) {
         );
     }
 
-    for group in groups {
-        print_summary_lines(
-            &group.summary,
-            &group.currency,
-            &format!("{} ", group.currency),
-        );
-    }
-    for group in groups {
-        print_valuation_comparisons(&group.items, group.summary.session.reference_date);
+    if details {
+        for group in groups {
+            print_summary_lines(
+                &group.summary,
+                &group.currency,
+                &format!("{} ", group.currency),
+            );
+        }
+        for group in groups {
+            print_valuation_comparisons(&group.items, group.summary.session.reference_date);
+        }
     }
 }
 
@@ -232,36 +249,45 @@ pub fn print_single_attribute(symbol: &str, attribute: &str, value: &str) {
     println!("{}  {}", blue(&attribute), value);
 }
 
-pub fn print_cache_footer(info: &FetchInfo) {
+pub fn print_cache_footer(info: &FetchInfo, details: bool) {
     let Some(oldest) = info.oldest_fetched_at else {
-        println!("\n{}", dim("Fetched: N/A (original timestamp unavailable)"));
+        if details {
+            println!("\n{}", dim("Fetched: N/A (original timestamp unavailable)"));
+        }
         return;
     };
     let newest = info.newest_fetched_at.unwrap_or(oldest);
     let now = chrono::Local::now();
+    let fetched_label = if details { "Fetched" } else { "Last updated" };
 
     let message = if info.all_from_cache {
         let age = now
             .signed_duration_since(oldest)
             .to_std()
             .unwrap_or_default();
-        format!(
-            "Data from cache · Fetched: {} ({})",
-            oldest.format("%Y-%m-%d %H:%M:%S %:z"),
-            format_duration(age)
-        )
+        let fetched = if details {
+            format!(" · Fetched: {}", oldest.format("%Y-%m-%d %H:%M:%S %:z"))
+        } else {
+            String::new()
+        };
+        format!("Data from cache{fetched} ({})", format_duration(age))
     } else if info.any_from_cache {
         let oldest_age = now
             .signed_duration_since(oldest)
             .to_std()
             .unwrap_or_default();
+        let oldest_label = if details {
+            "oldest fetch"
+        } else {
+            "oldest data"
+        };
         format!(
-            "Fetched: {} (oldest fetch: {})",
+            "{fetched_label}: {} ({oldest_label}: {})",
             newest.format("%H:%M:%S"),
             format_duration(oldest_age)
         )
     } else {
-        format!("Fetched: {}", newest.format("%H:%M:%S"))
+        format!("{fetched_label}: {}", newest.format("%H:%M:%S"))
     };
 
     println!("\n{}", dim(&message));
@@ -271,10 +297,17 @@ pub fn render_warning(message: &str) -> String {
     paint(WARNING, message)
 }
 
-fn print_header() {
+fn pnl_heading(details: bool) -> &'static str {
+    if details { "Session P&L" } else { "P&L" }
+}
+
+fn print_header(details: bool) {
     let header = format!(
         "{:<COL_TICKER$}  {:>COL_QTY$}  {:<COL_VALUE$}  {:<COL_PNL$}",
-        "Ticker", "Qty", "Value", "Session P&L"
+        "Ticker",
+        "Qty",
+        "Value",
+        pnl_heading(details)
     );
     println!("{}", header_style(&header));
 }
@@ -306,7 +339,7 @@ fn quote_details(item: &EnrichedItem) -> String {
     )
 }
 
-fn print_item(item: &EnrichedItem, reference: Option<NaiveDate>) {
+fn print_item(item: &EnrichedItem, reference: Option<NaiveDate>, details: bool) {
     let ticker = format!("{:<COL_TICKER$}", item.ticker);
     let quantity = format!("{:>COL_QTY$}", format_quantity(item.shares));
     let value = match item.evaluation.value {
@@ -321,7 +354,9 @@ fn print_item(item: &EnrichedItem, reference: Option<NaiveDate>) {
     let pnl = format_pnl(included_percent(item, reference));
 
     println!("{}  {}  {}  {}", blue(&ticker), quantity, value, pnl);
-    println!("  {}", dim(&quote_details(item)));
+    if details {
+        println!("  {}", dim(&quote_details(item)));
+    }
 }
 
 fn valuation_label(summary: &PortfolioSummary) -> String {

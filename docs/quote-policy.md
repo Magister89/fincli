@@ -41,9 +41,10 @@ class:
 | `MUTUALFUND` | valuation period (never session-eligible, even on publication day) |
 | absent or anything else | unknown |
 
-For any position with a valid price and baseline, fincli exposes the raw
-comparison amount and percent together with its period and source date, so a
-valuation-period move can never be presented as a session return.
+With `--details`, fincli exposes non-session comparisons with their raw
+amount and percent, period and source date. The default compact P&L column
+shows only eligible session comparisons; valuation-period moves are never
+presented as session returns.
 
 ## Recency budgets
 
@@ -79,15 +80,18 @@ Consequences worth knowing:
 UTC date-bucketing is an explicit convention, not an exchange-calendar
 guarantee. The session result carries a nullable amount/percent, a status
 (`complete`, `partial`, or `unavailable`), included/total position counts, and
-the reference session date. Output is labeled "Session P&L" with that
-reference date — never "today" or "24h".
+the reference session date. The compact column retains the original "P&L"
+heading. With `--details`, it is labeled "Session P&L" and the reference date
+and coverage are shown explicitly — never "today" or "24h". Both display
+modes use the same session calculation.
 
 ## Coverage
 
 Coverage = included position value / total priced value, in percent. It is
 `N/A` (unknown) whenever any position has an unknown valuation or a requested
-quote is missing — a full-portfolio percentage is then never claimed, in table
-mode, `--total` mode, and per-currency subtotals alike. Unpriced positions
+quote is missing — full-portfolio coverage is then never claimed. Coverage
+is printed only with `--details`, in table mode, `--total` mode, and
+per-currency subtotals alike. Unpriced positions
 keep their rows and produce warnings instead of disappearing silently. Valuation
 headlines are explicitly priced subtotals when any requested position is unvalued;
 if none is valued, the displayed amount is `N/A`, not zero.
@@ -110,10 +114,14 @@ session P&L `N/A`). Invalid cache timestamps are never replaced with the current
 time. Network failures or invalid fresh prices can reuse a last valid cached
 valuation without refreshing its original dates.
 
-Every portfolio row shows its quoted date, period and observation quality,
-including missing-baseline rows. Off-reference-date rows have `N/A` in the
-aggregate session column. Their separate comparison, or `N/A comparison`,
-remains visible with source metadata in both normal and `--total` modes.
+The default output retains the original compact table and single-line
+cache/update footer. It does not print per-row metadata, coverage or separate
+comparison sections. The footer describes fetch timing, not the source quote
+date. With `--details`, every portfolio row also shows its quoted date,
+period and observation quality, including missing-baseline rows.
+Off-reference-date rows have `N/A` in the aggregate session column in both
+display modes. Their separate comparison, or `N/A comparison`, is available
+with source metadata using `--details`, also in combination with `--total`.
 
 ## What this is not
 
