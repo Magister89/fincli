@@ -136,6 +136,32 @@ fn compact_lines(stdout: &str) -> Vec<String> {
 }
 
 #[test]
+fn real_cli_labels_recent_daily_closes_without_calling_them_dated_or_live() {
+    let home = sandbox(false, false);
+    let path = home.path().join(".fincli/cache.json");
+    let mut cache: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    cache["OLDER"]["data"]["dailyClose"] = json!(true);
+    cache["OLDER"]["data"]["quoteTimeMs"] = json!((Utc::now().timestamp() - 86400) * 1000);
+    fs::write(path, cache.to_string()).unwrap();
+    for total in [false, true] {
+        let details = run(&home, total, true);
+        assert!(
+            details.contains("daily close (not live) · quoted"),
+            "{details}"
+        );
+        let line = details
+            .lines()
+            .find(|line| line.contains("daily close (not live) · quoted"))
+            .unwrap();
+        assert!(line.contains("available"), "{line}");
+        assert!(!line.contains("dated"), "{line}");
+        assert!(details.contains("1/3 positions"), "{details}");
+        let compact = run(&home, total, false);
+        assert!(compact.contains("1 daily close(s), not live"), "{compact}");
+    }
+}
+
+#[test]
 fn real_cli_defaults_to_the_original_compact_table() {
     let home = sandbox(false, false);
     let stdout = run(&home, false, false);

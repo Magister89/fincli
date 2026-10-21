@@ -5,12 +5,14 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
-use chrono::{DateTime, Local, TimeZone};
+use chrono::{DateTime, Local, TimeZone, Utc};
 use futures::{StreamExt, stream};
 use serde::Deserialize;
 
 use crate::cache::{Cache, CacheEntry, QuoteCache};
-use crate::quote_policy::{PositionQuote, sanitize_positive};
+use crate::quote_policy::{
+    ComparisonPeriod, PositionQuote, comparison_period, quote_time_is_recent, sanitize_positive,
+};
 
 const CHART_BASE_URL: &str = "https://query1.finance.yahoo.com/v8/finance/chart";
 const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36";
@@ -36,6 +38,8 @@ pub struct QuoteData {
     pub provider_type: Option<String>,
     pub fetched_at: Option<DateTime<Local>>,
     pub from_cache: bool,
+    /// True when price and baseline come from completed daily chart bars.
+    pub daily_close: bool,
 }
 
 impl QuoteData {
@@ -89,15 +93,33 @@ impl Client {
             return Ok(quote_from_cache(entry));
         }
 
-        match self.fetch_quote(&symbol).await {
+        self.resolve_fetched_quote(
+            &symbol,
+            self.fetch_quote(&symbol).await,
+            Local::now().timestamp_millis(),
+        )
+    }
+
+    fn resolve_fetched_quote(
+        &self,
+        symbol: &str,
+        fetched: Result<QuoteData>,
+        now_ms: i64,
+    ) -> Result<QuoteData> {
+        match fetched {
             Ok(quote) if quote.last_price.is_none() => {
-                Ok(self.last_valid_cached_quote(&symbol).unwrap_or(quote))
+                Ok(self.last_valid_cached_quote(symbol).unwrap_or(quote))
             }
             Ok(quote) => {
-                self.store_quote(&symbol, &quote);
+                if let Some(cached) = self.last_valid_cached_quote(symbol)
+                    && keep_newer_cache(&quote, &cached, now_ms)
+                {
+                    return Ok(cached);
+                }
+                self.store_quote(symbol, &quote);
                 Ok(quote)
             }
-            Err(error) => self.last_valid_cached_quote(&symbol).ok_or(error),
+            Err(error) => self.last_valid_cached_quote(symbol).ok_or(error),
         }
     }
 
@@ -108,13 +130,38 @@ impl Client {
     }
 
     async fn fetch_quote(&self, symbol: &str) -> Result<QuoteData> {
+        let response = self.fetch_chart(symbol, false).await;
+        let now = Local::now();
+        let mut quote = quote_from_meta(
+            symbol,
+            response
+                .as_ref()
+                .map(|r| &r.meta)
+                .unwrap_or(&YahooMeta::default()),
+            now,
+        );
+        if needs_daily_close(&quote, now.timestamp_millis())
+            && let Ok(chart) = self.fetch_chart(symbol, true).await
+        {
+            apply_daily_close(symbol, &chart, &mut quote, Local::now());
+        }
+        if quote.last_price.is_none()
+            && let Err(error) = response
+        {
+            return Err(error);
+        }
+        Ok(quote)
+    }
+
+    async fn fetch_chart(&self, symbol: &str, daily: bool) -> Result<YahooResult> {
         let url = format!("{CHART_BASE_URL}/{}", escape_path_segment(symbol));
-        let response = self
-            .http_client
-            .get(url)
-            .send()
-            .await
-            .context("fetching data")?;
+        let request = self.http_client.get(url);
+        let request = if daily {
+            request.query(&[("range", "1mo"), ("interval", "1d")])
+        } else {
+            request
+        };
+        let response = request.send().await.context("fetching data")?;
 
         if !response.status().is_success() {
             return Err(anyhow!("unexpected status: {}", response.status().as_u16()));
@@ -133,25 +180,15 @@ impl Client {
             .and_then(|mut result| result.drain(..).next())
             .ok_or_else(|| anyhow!("no data found for symbol: {symbol}"))?;
 
-        let quote = QuoteData {
-            symbol: result.meta.symbol.unwrap_or_else(|| symbol.to_owned()),
-            last_price: result.meta.regular_market_price.and_then(sanitize_positive),
-            previous_close: result.meta.previous_close.and_then(sanitize_positive),
-            currency: result.meta.currency.unwrap_or_default(),
-            open: result.meta.regular_market_open,
-            day_high: result.meta.regular_market_day_high,
-            day_low: result.meta.regular_market_day_low,
-            volume: result.meta.regular_market_volume,
-            market_cap: result.meta.market_cap,
-            fifty_two_week_high: result.meta.fifty_two_week_high,
-            fifty_two_week_low: result.meta.fifty_two_week_low,
-            quote_time_ms: normalize_quote_time(result.meta.regular_market_time),
-            provider_type: result.meta.instrument_type.or(result.meta.quote_type),
-            fetched_at: Some(Local::now()),
-            from_cache: false,
-        };
-
-        Ok(quote)
+        if result
+            .meta
+            .symbol
+            .as_deref()
+            .is_some_and(|returned| returned != symbol)
+        {
+            return Err(anyhow!("response symbol mismatch for {symbol}"));
+        }
+        Ok(result)
     }
 
     pub async fn get_quotes(&self, symbols: &[String]) -> Result<HashMap<String, QuoteData>> {
@@ -205,6 +242,144 @@ impl Client {
     }
 }
 
+fn quote_from_meta(symbol: &str, meta: &YahooMeta, now: DateTime<Local>) -> QuoteData {
+    QuoteData {
+        symbol: meta.symbol.clone().unwrap_or_else(|| symbol.to_owned()),
+        last_price: meta.regular_market_price.and_then(sanitize_positive),
+        previous_close: meta.previous_close.and_then(sanitize_positive),
+        currency: meta
+            .currency
+            .as_deref()
+            .unwrap_or_default()
+            .trim()
+            .to_uppercase(),
+        open: meta.regular_market_open,
+        day_high: meta.regular_market_day_high,
+        day_low: meta.regular_market_day_low,
+        volume: meta.regular_market_volume,
+        market_cap: meta.market_cap,
+        fifty_two_week_high: meta.fifty_two_week_high,
+        fifty_two_week_low: meta.fifty_two_week_low,
+        quote_time_ms: normalize_quote_time(meta.regular_market_time),
+        provider_type: meta
+            .instrument_type
+            .as_ref()
+            .or(meta.quote_type.as_ref())
+            .map(|kind| kind.trim().to_uppercase())
+            .filter(|kind| !kind.is_empty()),
+        fetched_at: Some(now),
+        from_cache: false,
+        daily_close: false,
+    }
+}
+
+fn needs_daily_close(quote: &QuoteData, now_ms: i64) -> bool {
+    if quote.provider_type.is_some()
+        && comparison_period(quote.provider_type.as_deref()) != ComparisonPeriod::Session
+    {
+        return false;
+    }
+    quote.last_price.is_none() || !quote_time_is_recent(quote.quote_time_ms, now_ms)
+}
+
+fn usable_source_time(time: Option<i64>, now_ms: i64) -> Option<i64> {
+    time.filter(|ms| {
+        *ms > 0
+            && *ms <= now_ms.saturating_add(300_000)
+            && DateTime::<Utc>::from_timestamp_millis(*ms).is_some()
+    })
+}
+
+fn keep_newer_cache(incoming: &QuoteData, cached: &QuoteData, now_ms: i64) -> bool {
+    cached.last_price.is_some()
+        && (incoming.currency.is_empty() || incoming.currency == cached.currency)
+        && (incoming.provider_type.is_none() || incoming.provider_type == cached.provider_type)
+        && usable_source_time(cached.quote_time_ms, now_ms).is_some_and(|cached_time| {
+            usable_source_time(incoming.quote_time_ms, now_ms).is_none_or(|time| cached_time > time)
+        })
+}
+
+/// Only completed exchange-local dates; raw close and adjacent baseline come
+/// from the same series. Meta prices and adjusted closes are never substituted.
+fn apply_daily_close(
+    symbol: &str,
+    chart: &YahooResult,
+    quote: &mut QuoteData,
+    now: DateTime<Local>,
+) -> Option<()> {
+    let meta = &chart.meta;
+    let kind = meta.instrument_type.as_deref()?.trim().to_uppercase();
+    let currency = meta.currency.as_deref()?.trim().to_uppercase();
+    if meta.symbol.as_deref() != Some(symbol)
+        || meta.data_granularity.as_deref() != Some("1d")
+        || comparison_period(Some(&kind)) != ComparisonPeriod::Session
+        || currency.is_empty()
+        || quote
+            .provider_type
+            .as_ref()
+            .is_some_and(|primary| primary != &kind)
+        || (!quote.currency.is_empty() && quote.currency != currency)
+    {
+        return None;
+    }
+    let timezone: chrono_tz::Tz = meta.exchange_timezone_name.as_deref()?.parse().ok()?;
+    let today = now.with_timezone(&timezone).date_naive();
+    let times = chart.timestamp.as_ref()?;
+    let closes = chart
+        .indicators
+        .as_ref()?
+        .quote
+        .as_ref()?
+        .first()?
+        .close
+        .as_ref()?;
+    if times.is_empty() || times.len() != closes.len() {
+        return None;
+    }
+    let milliseconds: Vec<i64> = times
+        .iter()
+        .map(|time| normalize_quote_time(Some(*time)))
+        .collect::<Option<_>>()?;
+    if milliseconds.windows(2).any(|pair| pair[1] <= pair[0]) {
+        return None;
+    }
+    let date = |ms| {
+        DateTime::<Utc>::from_timestamp_millis(ms)
+            .map(|dt| dt.with_timezone(&timezone).date_naive())
+    };
+    for i in (0..times.len()).rev() {
+        let quote_time = milliseconds[i];
+        let bar_date = date(quote_time)?;
+        if quote_time > now.timestamp_millis() || bar_date >= today {
+            continue;
+        }
+        let Some(price) = closes[i].and_then(sanitize_positive) else {
+            continue;
+        };
+        if quote.last_price.is_some()
+            && usable_source_time(quote.quote_time_ms, now.timestamp_millis())
+                .is_some_and(|time| quote_time <= time)
+        {
+            return None;
+        }
+        let previous = if i > 0 && date(milliseconds[i - 1])? < bar_date {
+            closes[i - 1].and_then(sanitize_positive)
+        } else {
+            None
+        };
+        quote.last_price = Some(price);
+        quote.previous_close = previous;
+        quote.quote_time_ms = Some(quote_time);
+        quote.provider_type = Some(kind);
+        quote.currency = currency;
+        quote.fetched_at = Some(now);
+        quote.daily_close = true;
+        quote.from_cache = false;
+        return Some(());
+    }
+    None
+}
+
 pub struct Ticker {
     data: QuoteData,
 }
@@ -221,6 +396,10 @@ impl Ticker {
 
     pub fn attribute(&self, attr: &str) -> Option<AttributeValue> {
         let data = &self.data;
+        // Intraday fields belong to the frozen metadata, not the daily close.
+        if data.daily_close && matches!(attr, "open" | "dayHigh" | "dayLow" | "volume") {
+            return Some(missing_attribute());
+        }
         match attr {
             "symbol" => Some(AttributeValue::Text(data.symbol.clone())),
             "lastPrice" => Some(optional_float(data.last_price)),
@@ -233,6 +412,14 @@ impl Ticker {
             "marketCap" => Some(AttributeValue::Int(data.market_cap)),
             "fiftyTwoWeekHigh" => Some(AttributeValue::Float(data.fifty_two_week_high)),
             "fiftyTwoWeekLow" => Some(AttributeValue::Float(data.fifty_two_week_low)),
+            "priceSource" => Some(AttributeValue::Text(
+                if data.daily_close {
+                    "daily close (not live)"
+                } else {
+                    "quote"
+                }
+                .to_string(),
+            )),
             "quoteType" => Some(
                 data.provider_type
                     .clone()
@@ -262,7 +449,8 @@ fn missing_attribute() -> AttributeValue {
 fn normalize_quote_time(seconds: Option<i64>) -> Option<i64> {
     seconds
         .filter(|seconds| *seconds > 0)
-        .map(|seconds| seconds.saturating_mul(1000))
+        .and_then(|seconds| seconds.checked_mul(1000))
+        .filter(|ms| DateTime::<Utc>::from_timestamp_millis(*ms).is_some())
 }
 
 pub fn format_quote_time(timestamp_ms: i64) -> String {
@@ -308,6 +496,7 @@ fn quote_from_cache(entry: CacheEntry) -> QuoteData {
             .then(|| Local.timestamp_opt(entry.timestamp, 0).single())
             .flatten(),
         from_cache: true,
+        daily_close: entry.data.daily_close,
     }
 }
 
@@ -327,6 +516,7 @@ impl From<&QuoteData> for QuoteCache {
             fifty_two_week_low: quote.fifty_two_week_low,
             quote_time_ms: quote.quote_time_ms,
             provider_type: quote.provider_type.clone(),
+            daily_close: quote.daily_close,
         }
     }
 }
@@ -358,6 +548,18 @@ struct YahooChart {
 #[derive(Debug, Deserialize)]
 struct YahooResult {
     meta: YahooMeta,
+    timestamp: Option<Vec<i64>>,
+    indicators: Option<YahooIndicators>,
+}
+
+#[derive(Debug, Deserialize)]
+struct YahooIndicators {
+    quote: Option<Vec<YahooDailyQuotes>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct YahooDailyQuotes {
+    close: Option<Vec<Option<f64>>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -369,6 +571,10 @@ struct YahooError {
 struct YahooMeta {
     currency: Option<String>,
     symbol: Option<String>,
+    #[serde(rename = "dataGranularity")]
+    data_granularity: Option<String>,
+    #[serde(rename = "exchangeTimezoneName")]
+    exchange_timezone_name: Option<String>,
     #[serde(rename = "regularMarketPrice")]
     regular_market_price: Option<f64>,
     #[serde(rename = "previousClose")]
@@ -396,6 +602,9 @@ struct YahooMeta {
 }
 
 #[cfg(test)]
+mod daily_close_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -416,6 +625,7 @@ mod tests {
             provider_type: Some("ETF".to_string()),
             fetched_at: Local.timestamp_opt(1_789_387_200, 0).single(),
             from_cache: false,
+            daily_close: false,
         }
     }
 

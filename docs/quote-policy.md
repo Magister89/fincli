@@ -123,6 +123,39 @@ Off-reference-date rows have `N/A` in the aggregate session column in both
 display modes. Their separate comparison, or `N/A comparison`, is available
 with source metadata using `--details`, also in combination with `--total`.
 
+## Frozen Yahoo quotes: daily-close fallback
+
+For `EQUITY`/`ETF`/`INDEX`, a missing/invalid price or source time, or a quote
+older than 96 hours, triggers a second chart request with `range=1mo` and
+`interval=1d`. Missing primary metadata can be recovered from a matching chart.
+Healthy quotes and periodic NAVs do not trigger extra requests. Each request
+retains the 10-second timeout and the existing bounded portfolio concurrency.
+
+The same selection rules are used by Findash:
+
+- Select the latest positive finite **raw close** from a date strictly before
+  today in the exchange's IANA time zone (including DST). Today's daily bar is
+  excluded even if populated; after market close this remains conservative until
+  the next exchange-local date.
+- Verify symbol, currency, type, time zone, daily granularity and ordered,
+  aligned arrays. Never substitute frozen meta prices, `chartPreviousClose` or
+  adjusted close. The baseline is the immediately preceding bar's raw close,
+  or unknown; missing baselines are never bridged.
+- Preserve the bar timestamp and mark `dailyClose: true` through the cache. That
+  timestamp identifies a daily bar, not an exact closing execution time. A
+  failed chart refresh cannot roll back a newer cached close to an older primary
+  quote, nor freshen cache timestamps. Normal newer quotes recover automatically.
+- With a valid baseline and timestamps inside the usual budgets, quality is
+  **available**, not **dated**; an old close still becomes dated. Off-reference
+  sessions remain excluded from aggregate P&L. The session policy is unchanged.
+- `portfolio --details` shows **daily close (not live)** and the original date.
+  Compact and total-only output note the number of daily closes in the footer;
+  the normal compact layout is otherwise unchanged. Ticker output exposes
+  `priceSource` and the bar timestamp. Intraday OHLC/volume from the frozen
+  metadata are `N/A` rather than mixed with a newer close.
+
+Neither the portfolio file nor ticker identities/quantities are changed.
+
 ## What this is not
 
 - Not cost-basis or cumulative P&L: figures compare the latest price against

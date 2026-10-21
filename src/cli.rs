@@ -136,15 +136,19 @@ async fn run_portfolio(show_total_only: bool, details: bool, file: Option<PathBu
 
 fn print_fast_info(symbol: &str, ticker: &Ticker) {
     let data = ticker.data();
-    let rows = [
+    let mut rows = vec![
         row_optional("lastPrice", data.last_price),
         row_optional("previousClose", data.previous_close),
-        row("open", AttributeValue::Float(data.open)),
-        row("dayHigh", AttributeValue::Float(data.day_high)),
-        row("dayLow", AttributeValue::Float(data.day_low)),
-        row("volume", AttributeValue::Int(data.volume)),
+        row_attribute("open", ticker),
+        row_attribute("dayHigh", ticker),
+        row_attribute("dayLow", ticker),
+        row_attribute("volume", ticker),
         row("currency", AttributeValue::Text(data.currency.clone())),
     ];
+    if data.daily_close {
+        rows.push(row_attribute("priceSource", ticker));
+        rows.push(row_attribute("quoteTime", ticker));
+    }
     display::print_ticker_info(symbol, &rows);
 }
 
@@ -153,10 +157,11 @@ fn print_full_info(symbol: &str, ticker: &Ticker) {
     let rows = [
         row_optional("lastPrice", data.last_price),
         row_optional("previousClose", data.previous_close),
-        row("open", AttributeValue::Float(data.open)),
-        row("dayHigh", AttributeValue::Float(data.day_high)),
-        row("dayLow", AttributeValue::Float(data.day_low)),
-        row("volume", AttributeValue::Int(data.volume)),
+        row_attribute("open", ticker),
+        row_attribute("dayHigh", ticker),
+        row_attribute("dayLow", ticker),
+        row_attribute("volume", ticker),
+        row_attribute("priceSource", ticker),
         row("marketCap", AttributeValue::Int(data.market_cap)),
         row(
             "fiftyTwoWeekHigh",
@@ -200,6 +205,15 @@ fn row(attribute: &str, value: AttributeValue) -> TickerInfoRow {
         attribute: attribute.to_string(),
         value: format_value(value),
     }
+}
+
+fn row_attribute(attribute: &str, ticker: &Ticker) -> TickerInfoRow {
+    row(
+        attribute,
+        ticker
+            .attribute(attribute)
+            .unwrap_or_else(|| AttributeValue::Text("N/A".to_string())),
+    )
 }
 
 fn row_optional(attribute: &str, value: Option<f64>) -> TickerInfoRow {

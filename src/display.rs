@@ -290,6 +290,14 @@ pub fn print_cache_footer(info: &FetchInfo, details: bool) {
         format!("{fetched_label}: {}", newest.format("%H:%M:%S"))
     };
 
+    let message = if info.daily_closes > 0 {
+        format!(
+            "{message} · {} daily close(s), not live (--details for dates)",
+            info.daily_closes
+        )
+    } else {
+        message
+    };
     println!("\n{}", dim(&message));
 }
 
@@ -333,7 +341,11 @@ fn quote_details(item: &EnrichedItem) -> String {
         .unwrap_or_else(|| "N/A".to_string());
     format!(
         "{} · quoted {date} UTC · {}{}",
-        item.evaluation.comparison_period.label(),
+        if item.daily_close {
+            "daily close (not live)"
+        } else {
+            item.evaluation.comparison_period.label()
+        },
         item.evaluation.quality.label(),
         if item.from_cache { " · cached" } else { "" }
     )
@@ -630,6 +642,7 @@ mod tests {
             shares: 100.0,
             currency: "EUR".to_string(),
             from_cache: true,
+            daily_close: false,
             evaluation: crate::quote_policy::evaluate_position(
                 crate::quote_policy::PositionQuote {
                     shares: 100.0,
@@ -663,6 +676,7 @@ mod tests {
             shares: 10.0,
             currency: "EUR".to_string(),
             from_cache: false,
+            daily_close: false,
             evaluation: crate::quote_policy::evaluate_position(
                 crate::quote_policy::PositionQuote {
                     shares: 10.0,

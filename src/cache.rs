@@ -48,6 +48,9 @@ pub struct QuoteCache {
         skip_serializing_if = "Option::is_none"
     )]
     pub provider_type: Option<String>,
+    /// Historical daily close, not an intraday tick. Legacy entries default to false.
+    #[serde(default, rename = "dailyClose")]
+    pub daily_close: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
@@ -200,6 +203,7 @@ mod tests {
             fifty_two_week_low: 0.0,
             quote_time_ms: None,
             provider_type: None,
+            daily_close: false,
         }
     }
 

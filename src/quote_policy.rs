@@ -321,7 +321,7 @@ fn timestamp_valid(timestamp: Option<i64>, now_ms: i64) -> bool {
     timestamp.is_some_and(|ts| ts > 0 && ts.saturating_sub(now_ms) <= MAX_FUTURE_MS)
 }
 
-fn quote_time_is_recent(quote_time: Option<i64>, now_ms: i64) -> bool {
+pub(crate) fn quote_time_is_recent(quote_time: Option<i64>, now_ms: i64) -> bool {
     timestamp_valid(quote_time, now_ms)
         && quote_time.is_some_and(|ts| now_ms.saturating_sub(ts) <= MAX_QUOTE_AGE_MS)
 }

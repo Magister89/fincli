@@ -44,6 +44,7 @@ pub struct FetchInfo {
     pub newest_fetched_at: Option<DateTime<Local>>,
     pub all_from_cache: bool,
     pub any_from_cache: bool,
+    pub daily_closes: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -52,6 +53,7 @@ pub struct EnrichedItem {
     pub shares: f64,
     pub currency: String,
     pub from_cache: bool,
+    pub daily_close: bool,
     /// Policy verdict for this position: valuation, session eligibility, and
     /// the raw comparison with its period.
     pub evaluation: PositionEvaluation,
@@ -107,6 +109,9 @@ impl Portfolio {
                 continue;
             };
 
+            if quote.daily_close {
+                self.fetch_info.daily_closes += 1;
+            }
             if let Some(fetched_at) = quote.fetched_at {
                 self.track_fetch_info(fetched_at, quote.from_cache);
             }
@@ -129,6 +134,7 @@ impl Portfolio {
                 shares: item.shares,
                 currency: quote.currency.clone(),
                 from_cache: quote.from_cache,
+                daily_close: quote.daily_close,
                 evaluation,
             });
         }
@@ -271,6 +277,7 @@ mod tests {
             shares,
             currency: currency.to_string(),
             from_cache: false,
+            daily_close: false,
             evaluation: quote_policy::evaluate_position(
                 quote_policy::PositionQuote {
                     shares,
