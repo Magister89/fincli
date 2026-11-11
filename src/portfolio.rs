@@ -45,6 +45,7 @@ pub struct FetchInfo {
     pub all_from_cache: bool,
     pub any_from_cache: bool,
     pub daily_closes: usize,
+    pub historical_navs: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -109,7 +110,9 @@ impl Portfolio {
                 continue;
             };
 
-            if quote.daily_close {
+            if quote.is_historical_nav() {
+                self.fetch_info.historical_navs += 1;
+            } else if quote.daily_close {
                 self.fetch_info.daily_closes += 1;
             }
             if let Some(fetched_at) = quote.fetched_at {

@@ -11,7 +11,7 @@ A CLI tool for tracking investment portfolios with real-time Yahoo Finance data.
 - Compact portfolio tracking with session P&L and optional quote details
 - Multi-currency support with grouped subtotals
 - Concurrent data fetching for fast updates
-- Completed daily-close fallback for frozen equity/ETF quotes, with explicit source dates
+- Historical-price fallback for frozen equity/ETF quotes and mutual-fund NAVs, with explicit source dates
 - File-based caching with 2-minute TTL
 - Single binary, no runtime dependencies
 
@@ -97,8 +97,10 @@ Funds, off-reference quotes and unknown comparisons show `N/A` in the P&L
 column, never a fabricated `0`. Use `--details` to see the reference UTC date,
 coverage, quote metadata and separate valuation-period comparisons. The
 footer describes fetch/cache timing, not the source quote date. Historical
-fallbacks are labeled **daily close (not live)**; recent closes are not classified
-as dated, but remain excluded from any different session's P&L. See
+fallbacks are labeled **daily close (not live)** or **historical NAV (not live)**.
+Recent closes are not classified as dated, but remain excluded from any different
+session's P&L. Historical NAVs retain their valuation period and never enter
+session P&L, even when recent. See
 [docs/quote-policy.md](docs/quote-policy.md) for the full policy.
 
 ## Configuration

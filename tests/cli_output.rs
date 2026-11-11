@@ -162,6 +162,46 @@ fn real_cli_labels_recent_daily_closes_without_calling_them_dated_or_live() {
 }
 
 #[test]
+fn real_cli_labels_historical_navs_without_presenting_them_as_session_pnl() {
+    let home = sandbox(false, false);
+    let path = home.path().join(".fincli/cache.json");
+    let mut cache: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    cache["PERIODIC"]["data"]["dailyClose"] = json!(true);
+    cache["PERIODIC"]["data"]["lastPrice"] = json!(21.19809);
+    cache["PERIODIC"]["data"]["previousClose"] = json!(21.28396);
+    cache["PERIODIC"]["data"]["quoteTimeMs"] = json!((Utc::now().timestamp() - 86400) * 1000);
+    fs::write(&path, cache.to_string()).unwrap();
+    for total in [false, true] {
+        let details = run(&home, total, true);
+        assert!(
+            details.contains("valuation period · historical NAV (not live) · quoted"),
+            "{details}"
+        );
+        assert!(details.contains("1/3 positions"), "{details}");
+        assert!(!details.contains("daily close"), "{details}");
+        let compact = run(&home, total, false);
+        assert!(compact.contains("4,119.81 EUR"), "{compact}");
+        assert!(
+            compact.contains("1 historical NAV(s), not live"),
+            "{compact}"
+        );
+        assert!(!compact.contains("daily close"), "{compact}");
+        if !total {
+            let row = compact
+                .lines()
+                .find(|line| line.starts_with("PERIODIC"))
+                .unwrap();
+            assert!(row.contains("N/A"), "{row}");
+        }
+    }
+    cache["OLDER"]["data"]["dailyClose"] = json!(true);
+    fs::write(path, cache.to_string()).unwrap();
+    let mixed = run(&home, true, false);
+    assert!(mixed.contains("1 daily close(s), not live"), "{mixed}");
+    assert!(mixed.contains("1 historical NAV(s), not live"), "{mixed}");
+}
+
+#[test]
 fn real_cli_defaults_to_the_original_compact_table() {
     let home = sandbox(false, false);
     let stdout = run(&home, false, false);

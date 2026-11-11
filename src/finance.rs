@@ -38,11 +38,17 @@ pub struct QuoteData {
     pub provider_type: Option<String>,
     pub fetched_at: Option<DateTime<Local>>,
     pub from_cache: bool,
-    /// True when price and baseline come from completed daily chart bars.
+    /// Price and baseline came from completed daily chart bars, including NAVs.
+    /// The provider type distinguishes historical NAVs from exchange closes.
     pub daily_close: bool,
 }
 
 impl QuoteData {
+    pub fn is_historical_nav(&self) -> bool {
+        self.daily_close
+            && comparison_period(self.provider_type.as_deref()) == ComparisonPeriod::ValuationPeriod
+    }
+
     /// Build the pure-policy input for a position of `shares` in this quote.
     /// Cache state is not part of the policy: freshness is carried by the
     /// timestamps alone.
@@ -275,7 +281,7 @@ fn quote_from_meta(symbol: &str, meta: &YahooMeta, now: DateTime<Local>) -> Quot
 
 fn needs_daily_close(quote: &QuoteData, now_ms: i64) -> bool {
     if quote.provider_type.is_some()
-        && comparison_period(quote.provider_type.as_deref()) != ComparisonPeriod::Session
+        && comparison_period(quote.provider_type.as_deref()) == ComparisonPeriod::Unknown
     {
         return false;
     }
@@ -299,8 +305,9 @@ fn keep_newer_cache(incoming: &QuoteData, cached: &QuoteData, now_ms: i64) -> bo
         })
 }
 
-/// Only completed exchange-local dates; raw close and adjacent baseline come
-/// from the same series. Meta prices and adjusted closes are never substituted.
+/// Only completed exchange-local dates; raw close/NAV and adjacent baseline come
+/// from the same series. NAVs retain their provider type and valuation period.
+/// Meta prices and adjusted closes are never substituted.
 fn apply_daily_close(
     symbol: &str,
     chart: &YahooResult,
@@ -312,7 +319,7 @@ fn apply_daily_close(
     let currency = meta.currency.as_deref()?.trim().to_uppercase();
     if meta.symbol.as_deref() != Some(symbol)
         || meta.data_granularity.as_deref() != Some("1d")
-        || comparison_period(Some(&kind)) != ComparisonPeriod::Session
+        || comparison_period(Some(&kind)) == ComparisonPeriod::Unknown
         || currency.is_empty()
         || quote
             .provider_type
@@ -396,7 +403,7 @@ impl Ticker {
 
     pub fn attribute(&self, attr: &str) -> Option<AttributeValue> {
         let data = &self.data;
-        // Intraday fields belong to the frozen metadata, not the daily close.
+        // Intraday fields belong to the frozen metadata, not the historical close/NAV.
         if data.daily_close && matches!(attr, "open" | "dayHigh" | "dayLow" | "volume") {
             return Some(missing_attribute());
         }
@@ -413,7 +420,9 @@ impl Ticker {
             "fiftyTwoWeekHigh" => Some(AttributeValue::Float(data.fifty_two_week_high)),
             "fiftyTwoWeekLow" => Some(AttributeValue::Float(data.fifty_two_week_low)),
             "priceSource" => Some(AttributeValue::Text(
-                if data.daily_close {
+                if data.is_historical_nav() {
+                    "historical NAV (not live)"
+                } else if data.daily_close {
                     "daily close (not live)"
                 } else {
                     "quote"
@@ -603,6 +612,8 @@ struct YahooMeta {
 
 #[cfg(test)]
 mod daily_close_tests;
+#[cfg(test)]
+mod nav_fallback_tests;
 
 #[cfg(test)]
 mod tests {

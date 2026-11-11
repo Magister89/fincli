@@ -164,7 +164,7 @@ fn latest_valid_completed_price_retains_its_own_date() {
 }
 
 #[test]
-fn fresh_quotes_weekends_and_funds_do_not_need_another_request() {
+fn fresh_quotes_and_weekends_do_not_need_another_request() {
     let mut quote = primary();
     assert!(needs_daily_close(&quote, now().timestamp_millis()));
     quote.quote_time_ms = Some(now().timestamp_millis() - 3 * 86_400_000);
@@ -172,6 +172,8 @@ fn fresh_quotes_weekends_and_funds_do_not_need_another_request() {
     quote.last_price = None;
     assert!(needs_daily_close(&quote, now().timestamp_millis()));
     quote.provider_type = Some("MUTUALFUND".to_string());
+    assert!(needs_daily_close(&quote, now().timestamp_millis()));
+    quote.provider_type = Some("CURRENCY".to_string());
     assert!(!needs_daily_close(&quote, now().timestamp_millis()));
 }
 

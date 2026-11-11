@@ -3,7 +3,7 @@ use std::time::Duration;
 use chrono::NaiveDate;
 
 use crate::portfolio::{CurrencyGroup, EnrichedItem, FetchInfo};
-use crate::quote_policy::PortfolioSummary;
+use crate::quote_policy::{ComparisonPeriod, PortfolioSummary};
 
 const GREEN: &str = "\x1b[38;2;166;209;137m";
 const RED: &str = "\x1b[38;2;231;130;132m";
@@ -298,6 +298,14 @@ pub fn print_cache_footer(info: &FetchInfo, details: bool) {
     } else {
         message
     };
+    let message = if info.historical_navs > 0 {
+        format!(
+            "{message} · {} historical NAV(s), not live (--details for dates)",
+            info.historical_navs
+        )
+    } else {
+        message
+    };
     println!("\n{}", dim(&message));
 }
 
@@ -341,7 +349,11 @@ fn quote_details(item: &EnrichedItem) -> String {
         .unwrap_or_else(|| "N/A".to_string());
     format!(
         "{} · quoted {date} UTC · {}{}",
-        if item.daily_close {
+        if item.daily_close
+            && item.evaluation.comparison_period == ComparisonPeriod::ValuationPeriod
+        {
+            "valuation period · historical NAV (not live)"
+        } else if item.daily_close {
             "daily close (not live)"
         } else {
             item.evaluation.comparison_period.label()

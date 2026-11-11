@@ -123,13 +123,14 @@ Off-reference-date rows have `N/A` in the aggregate session column in both
 display modes. Their separate comparison, or `N/A comparison`, is available
 with source metadata using `--details`, also in combination with `--total`.
 
-## Frozen Yahoo quotes: daily-close fallback
+## Frozen Yahoo quotes: historical-price fallback
 
-For `EQUITY`/`ETF`/`INDEX`, a missing/invalid price or source time, or a quote
-older than 96 hours, triggers a second chart request with `range=1mo` and
-`interval=1d`. Missing primary metadata can be recovered from a matching chart.
-Healthy quotes and periodic NAVs do not trigger extra requests. Each request
-retains the 10-second timeout and the existing bounded portfolio concurrency.
+For `EQUITY`/`ETF`/`INDEX` and `MUTUALFUND`, a missing/invalid price or source
+time, or a quote older than 96 hours, triggers a second chart request with
+`range=1mo` and `interval=1d`. Missing primary metadata can be recovered from a
+matching chart. Healthy quotes (including NAVs) and unsupported types do not
+trigger extra requests. Each request retains the 10-second timeout and the
+existing bounded portfolio concurrency.
 
 The same selection rules are used by Findash:
 
@@ -141,18 +142,26 @@ The same selection rules are used by Findash:
   aligned arrays. Never substitute frozen meta prices, `chartPreviousClose` or
   adjusted close. The baseline is the immediately preceding bar's raw close,
   or unknown; missing baselines are never bridged.
-- Preserve the bar timestamp and mark `dailyClose: true` through the cache. That
-  timestamp identifies a daily bar, not an exact closing execution time. A
-  failed chart refresh cannot roll back a newer cached close to an older primary
-  quote, nor freshen cache timestamps. Normal newer quotes recover automatically.
+- Preserve the bar timestamp and the existing `dailyClose: true` cache flag.
+  `providerType: "MUTUALFUND"` distinguishes a historical NAV from an exchange
+  close; no cache migration is needed. The timestamp identifies the historical
+  bar, not an exact trade or NAV publication time. History must be newer than a
+  valid primary quote before replacing it. A failed chart refresh cannot roll
+  back a newer cached close/NAV to an older primary quote, nor freshen cache
+  timestamps. Normal newer quotes recover automatically.
 - With a valid baseline and timestamps inside the usual budgets, quality is
   **available**, not **dated**; an old close still becomes dated. Off-reference
   sessions remain excluded from aggregate P&L. The session policy is unchanged.
-- `portfolio --details` shows **daily close (not live)** and the original date.
-  Compact and total-only output note the number of daily closes in the footer;
-  the normal compact layout is otherwise unchanged. Ticker output exposes
+- A historical NAV retains its `MUTUALFUND` provider type and **valuation
+  period**. It contributes to valuation, never to session P&L, even when recent
+  and dated to the same day as equities. Sparse bars do not imply a daily NAV
+  publication schedule; missing adjacent baselines remain unknown.
+- `portfolio --details` shows **daily close (not live)** or **valuation period ·
+  historical NAV (not live)** with the original date. Compact and total-only
+  output count daily closes and historical NAVs separately in the footer; the
+  normal compact layout is otherwise unchanged. Ticker output exposes
   `priceSource` and the bar timestamp. Intraday OHLC/volume from the frozen
-  metadata are `N/A` rather than mixed with a newer close.
+  metadata are `N/A` rather than mixed with a newer close or NAV.
 
 Neither the portfolio file nor ticker identities/quantities are changed.
 

@@ -48,7 +48,8 @@ pub struct QuoteCache {
         skip_serializing_if = "Option::is_none"
     )]
     pub provider_type: Option<String>,
-    /// Historical daily close, not an intraday tick. Legacy entries default to false.
+    /// Historical daily chart price, not an intraday tick; MUTUALFUND means a NAV.
+    /// Keep the existing cache field; legacy entries default to false.
     #[serde(default, rename = "dailyClose")]
     pub daily_close: bool,
 }
