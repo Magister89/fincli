@@ -172,7 +172,7 @@ fn fresh_quotes_and_weekends_do_not_need_another_request() {
     quote.last_price = None;
     assert!(needs_daily_close(&quote, now().timestamp_millis()));
     quote.provider_type = Some("MUTUALFUND".to_string());
-    assert!(needs_daily_close(&quote, now().timestamp_millis()));
+    assert!(!needs_daily_close(&quote, now().timestamp_millis()));
     quote.provider_type = Some("CURRENCY".to_string());
     assert!(!needs_daily_close(&quote, now().timestamp_millis()));
 }

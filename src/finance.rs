@@ -38,8 +38,8 @@ pub struct QuoteData {
     pub provider_type: Option<String>,
     pub fetched_at: Option<DateTime<Local>>,
     pub from_cache: bool,
-    /// Price and baseline came from completed daily chart bars, including NAVs.
-    /// The provider type distinguishes historical NAVs from exchange closes.
+    /// Price and baseline came from completed daily chart bars.
+    /// Legacy MUTUALFUND entries with this flag are rejected when serving cache.
     pub daily_close: bool,
 }
 
@@ -47,6 +47,12 @@ impl QuoteData {
     pub fn is_historical_nav(&self) -> bool {
         self.daily_close
             && comparison_period(self.provider_type.as_deref()) == ComparisonPeriod::ValuationPeriod
+    }
+
+    /// Historical caches require a supported session-capable provider type.
+    fn cache_source_allowed(&self) -> bool {
+        !self.daily_close
+            || comparison_period(self.provider_type.as_deref()) == ComparisonPeriod::Session
     }
 
     /// Build the pure-policy input for a position of `shares` in this quote.
@@ -95,8 +101,8 @@ impl Client {
         let symbol = symbol.trim().to_uppercase();
         validate_symbol(&symbol)?;
 
-        if let Some(entry) = self.cache_entry(&symbol) {
-            return Ok(quote_from_cache(entry));
+        if let Some(quote) = self.cached_quote(&symbol) {
+            return Ok(quote);
         }
 
         self.resolve_fetched_quote(
@@ -132,6 +138,9 @@ impl Client {
     fn last_valid_cached_quote(&self, symbol: &str) -> Option<QuoteData> {
         let entry = self.cache.as_ref()?.lock().ok()?.get_stored_entry(symbol)?;
         let quote = quote_from_cache(entry);
+        if !quote.cache_source_allowed() {
+            return None;
+        }
         quote.last_price.map(|_| quote)
     }
 
@@ -232,9 +241,12 @@ impl Client {
         Ok(result)
     }
 
-    fn cache_entry(&self, symbol: &str) -> Option<CacheEntry> {
+    fn cached_quote(&self, symbol: &str) -> Option<QuoteData> {
         let cache = self.cache.as_ref()?;
-        cache.lock().ok()?.get_entry(symbol)
+        let entry = cache.lock().ok()?.get_entry(symbol)?;
+        let quote = quote_from_cache(entry);
+        // Bypass even a fresh historical NAV cache entry after disabling history.
+        quote.cache_source_allowed().then_some(quote)
     }
 
     fn store_quote(&self, symbol: &str, quote: &QuoteData) {
@@ -280,8 +292,10 @@ fn quote_from_meta(symbol: &str, meta: &YahooMeta, now: DateTime<Local>) -> Quot
 }
 
 fn needs_daily_close(quote: &QuoteData, now_ms: i64) -> bool {
+    // Fund quote/chart scales may differ. Keep the primary NAV and its date;
+    // historical NAV fallback is temporarily disabled, even for missing prices.
     if quote.provider_type.is_some()
-        && comparison_period(quote.provider_type.as_deref()) == ComparisonPeriod::Unknown
+        && comparison_period(quote.provider_type.as_deref()) != ComparisonPeriod::Session
     {
         return false;
     }
@@ -305,8 +319,8 @@ fn keep_newer_cache(incoming: &QuoteData, cached: &QuoteData, now_ms: i64) -> bo
         })
 }
 
-/// Only completed exchange-local dates; raw close/NAV and adjacent baseline come
-/// from the same series. NAVs retain their provider type and valuation period.
+/// Only completed exchange-local dates for session-capable types; raw close and
+/// adjacent baseline come from the same series. NAV history is not accepted.
 /// Meta prices and adjusted closes are never substituted.
 fn apply_daily_close(
     symbol: &str,
@@ -319,7 +333,7 @@ fn apply_daily_close(
     let currency = meta.currency.as_deref()?.trim().to_uppercase();
     if meta.symbol.as_deref() != Some(symbol)
         || meta.data_granularity.as_deref() != Some("1d")
-        || comparison_period(Some(&kind)) == ComparisonPeriod::Unknown
+        || comparison_period(Some(&kind)) != ComparisonPeriod::Session
         || currency.is_empty()
         || quote
             .provider_type

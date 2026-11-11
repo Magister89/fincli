@@ -62,6 +62,10 @@ fn sandbox(include_usd: bool, missing_price: bool) -> TempDir {
 }
 
 fn run(dir: &TempDir, total: bool, details: bool) -> String {
+    run_with_stderr(dir, total, details).0
+}
+
+fn run_with_stderr(dir: &TempDir, total: bool, details: bool) -> (String, String) {
     let mut command = Command::new(env!("CARGO_BIN_EXE_fincli"));
     command
         .env("HOME", dir.path())
@@ -96,8 +100,9 @@ fn run(dir: &TempDir, total: bool, details: bool) -> String {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stderr = String::from_utf8(output.stderr).unwrap();
     let mut escape = false;
-    String::from_utf8(output.stdout)
+    let stdout = String::from_utf8(output.stdout)
         .unwrap()
         .chars()
         .filter(|ch| {
@@ -113,7 +118,8 @@ fn run(dir: &TempDir, total: bool, details: bool) -> String {
             }
             true
         })
-        .collect()
+        .collect();
+    (stdout, stderr)
 }
 
 fn compact_lines(stdout: &str) -> Vec<String> {
@@ -162,7 +168,7 @@ fn real_cli_labels_recent_daily_closes_without_calling_them_dated_or_live() {
 }
 
 #[test]
-fn real_cli_labels_historical_navs_without_presenting_them_as_session_pnl() {
+fn real_cli_ignores_historical_nav_caches_in_all_output_modes() {
     let home = sandbox(false, false);
     let path = home.path().join(".fincli/cache.json");
     let mut cache: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
@@ -170,35 +176,64 @@ fn real_cli_labels_historical_navs_without_presenting_them_as_session_pnl() {
     cache["PERIODIC"]["data"]["lastPrice"] = json!(21.19809);
     cache["PERIODIC"]["data"]["previousClose"] = json!(21.28396);
     cache["PERIODIC"]["data"]["quoteTimeMs"] = json!((Utc::now().timestamp() - 86400) * 1000);
-    fs::write(&path, cache.to_string()).unwrap();
+    let original = cache.to_string();
+    fs::write(&path, &original).unwrap();
+    for total in [false, true] {
+        for details in [false, true] {
+            let (stdout, stderr) = run_with_stderr(&home, total, details);
+            assert!(
+                stderr.contains("failed to fetch data for: PERIODIC"),
+                "{stderr}"
+            );
+            assert!(stdout.contains("2,000.00 EUR"), "{stdout}");
+            assert!(!stdout.contains("4,119.81"), "{stdout}");
+            assert!(!stdout.contains("historical NAV"), "{stdout}");
+            assert!(stdout.to_lowercase().contains("subtotal"), "{stdout}");
+            if details {
+                assert!(stdout.contains("Coverage: N/A"), "{stdout}");
+            }
+        }
+    }
+    assert_eq!(fs::read_to_string(&path).unwrap(), original);
+    cache["OLDER"]["data"]["dailyClose"] = json!(true);
+    fs::write(path, cache.to_string()).unwrap();
+    let mixed = run(&home, true, false);
+    assert!(mixed.contains("1 daily close(s), not live"), "{mixed}");
+    assert!(!mixed.contains("historical NAV"), "{mixed}");
+}
+
+#[test]
+fn real_cli_retains_last_primary_fund_value_date_and_non_session_semantics() {
+    let home = sandbox(false, false);
+    let path = home.path().join(".fincli/cache.json");
+    let mut cache: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    cache["PERIODIC"]["data"]["lastPrice"] = json!(22.06);
+    cache["PERIODIC"]["data"]["previousClose"] = json!(21.284);
+    cache["PERIODIC"]["data"]["quoteTimeMs"] = json!(
+        chrono::DateTime::parse_from_rfc3339("2026-10-15T20:00:00Z")
+            .unwrap()
+            .timestamp_millis()
+    );
+    fs::write(path, cache.to_string()).unwrap();
     for total in [false, true] {
         let details = run(&home, total, true);
+        assert!(details.contains("4,206.00 EUR"), "{details}");
         assert!(
-            details.contains("valuation period · historical NAV (not live) · quoted"),
+            details.contains("valuation period · quoted 2026-10-15 UTC · dated"),
             "{details}"
         );
         assert!(details.contains("1/3 positions"), "{details}");
-        assert!(!details.contains("daily close"), "{details}");
+        assert!(!details.contains("historical NAV"), "{details}");
         let compact = run(&home, total, false);
-        assert!(compact.contains("4,119.81 EUR"), "{compact}");
-        assert!(
-            compact.contains("1 historical NAV(s), not live"),
-            "{compact}"
-        );
-        assert!(!compact.contains("daily close"), "{compact}");
+        assert!(compact.contains("4,206.00 EUR"), "{compact}");
         if !total {
             let row = compact
                 .lines()
                 .find(|line| line.starts_with("PERIODIC"))
                 .unwrap();
-            assert!(row.contains("N/A"), "{row}");
+            assert!(row.contains("2,206.00 EUR") && row.contains("N/A"), "{row}");
         }
     }
-    cache["OLDER"]["data"]["dailyClose"] = json!(true);
-    fs::write(path, cache.to_string()).unwrap();
-    let mixed = run(&home, true, false);
-    assert!(mixed.contains("1 daily close(s), not live"), "{mixed}");
-    assert!(mixed.contains("1 historical NAV(s), not live"), "{mixed}");
 }
 
 #[test]
